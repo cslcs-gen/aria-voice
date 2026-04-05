@@ -198,11 +198,12 @@ export function useVoiceAgent() {
       setStatus("error");
       return;
     }
-
-    const SpeechRecognition =
-      (window as Window & typeof globalThis & { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition ??
-      window.SpeechRecognition;
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SpeechRecognition = w.SpeechRecognition || w.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
+
     recognition.lang = "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
