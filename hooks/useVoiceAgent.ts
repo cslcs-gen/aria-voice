@@ -74,8 +74,10 @@ export function useVoiceAgent() {
   const [lastResponse, setLastResponse] = useState("");
   const [conversationHistory, setConversationHistory] = useState<object[]>([]);
 
-  const recognitionRef = useRef<InstanceType<typeof window.SpeechRecognition> | null>(null);
-  const synthRef = useRef<typeof window.speechSynthesis | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const synthRef = useRef<any>(null);
   const activeRef = useRef(false);
 
   const addLog = useCallback((type: ConsoleEntry["type"], message: string) => {
