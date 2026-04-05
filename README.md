@@ -125,3 +125,4 @@ Browser
 - The mock backend (`lib/it-systems.ts`) resets on server restart (in-memory only). For persistence, swap with a real DB.
 - Conversation history is maintained per browser session via React state.
 - The agent model is `claude-opus-4-5` — swap to `claude-haiku-4-5-20251001` for lower latency/cost.
+# cache bust
