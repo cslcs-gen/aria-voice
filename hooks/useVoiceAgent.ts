@@ -74,8 +74,8 @@ export function useVoiceAgent() {
   const [lastResponse, setLastResponse] = useState("");
   const [conversationHistory, setConversationHistory] = useState<object[]>([]);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const synthRef = useRef<SpeechSynthesis | null>(null);
+  const recognitionRef = useRef<InstanceType<typeof window.SpeechRecognition> | null>(null);
+  const synthRef = useRef<typeof window.speechSynthesis | null>(null);
   const activeRef = useRef(false);
 
   const addLog = useCallback((type: ConsoleEntry["type"], message: string) => {
@@ -211,21 +211,24 @@ export function useVoiceAgent() {
       addLog("listen", "[MIC] Listening — speak now...");
     };
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const text = event.results[0][0].transcript;
-      setTranscript(text);
-      addLog("listen", `[USER] "${text}"`);
-      recognition.stop();
-      callAgent(text);
+    recognition.onresult = (event: Event) => {
+     const speechEvent = event as unknown as { results: SpeechRecognitionResultList };
+     const text = speechEvent.results[0][0].transcript;
+     setTranscript(text);
+     addLog("listen", `[USER] "${text}"`);
+     recognition.stop();
+     callAgent(text);
     };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      if (event.error === "no-speech") {
-        addLog("system", "[MIC] No speech detected, retrying...");
-        if (activeRef.current) startListening();
-      } else {
-        addLog("error", `[MIC ERROR] ${event.error}`);
-        setStatus("error");
+
+    recognition.onerror = (event: Event) => {
+      const errEvent = event as unknown as { error: string };
+      if (errEvent.error === "no-speech") {
+         addLog("system", "[MIC] No speech detected, retrying...");
+         if (activeRef.current) startListening();
+         } else {
+           addLog("error", `[MIC ERROR] ${errEvent.error}`);
+      setStatus("error");
       }
     };
 
