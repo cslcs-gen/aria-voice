@@ -4,12 +4,43 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --background: #fafbfc;
+    --foreground: #1a1f36;
+    --card: #ffffff;
+    --card-foreground: #1a1f36;
+    --primary: #1e3a8a;
+    --primary-foreground: #ffffff;
+    --secondary: #f1f5f9;
+    --secondary-foreground: #1a1f36;
+    --muted: #f1f5f9;
+    --muted-foreground: #64748b;
+    --accent: #dbeafe;
+    --accent-foreground: #1e3a8a;
+    --border: #e2e8f0;
+    --ring: #3b82f6;
+    --radius: 0.5rem;
+    --destructive: #dc2626;
+  }
+
   * {
     box-sizing: border-box;
+    border-color: var(--border);
   }
-  html,
+
+  html, body { height: 100%; }
+
   body {
-    height: 100%;
-    overflow: hidden;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+  .scrollbar-thumb-slate::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+  .scrollbar-track-transparent::-webkit-scrollbar-track { background: transparent; }
+  @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .animate-spin-slow { animation: spin-slow 3s linear infinite; }
 }

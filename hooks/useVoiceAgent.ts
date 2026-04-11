@@ -1,6 +1,5 @@
-// hooks/useVoiceAgent.ts — Voice + Agent Orchestrator
-
 "use client";
+// hooks/useVoiceAgent.ts — unchanged agentic logic
 
 import { useState, useRef, useCallback } from "react";
 
@@ -42,7 +41,6 @@ const TOOL_LABELS: Record<string, string> = {
 function ts() {
   return new Date().toLocaleTimeString("en-US", { hour12: false });
 }
-
 function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
@@ -50,24 +48,9 @@ function uid() {
 export function useVoiceAgent() {
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [consoleLog, setConsoleLog] = useState<ConsoleEntry[]>([
-    {
-      id: uid(),
-      timestamp: ts(),
-      type: "system",
-      message: "ARIA v2.4.1 initialized — Autonomous Resolution & IT Agent online.",
-    },
-    {
-      id: uid(),
-      timestamp: ts(),
-      type: "system",
-      message: "Tools loaded: verify_user, unlock_account, fix_vpn_connection, request_software, log_to_crm",
-    },
-    {
-      id: uid(),
-      timestamp: ts(),
-      type: "system",
-      message: "Voice interface ready. Awaiting session start.",
-    },
+    { id: uid(), timestamp: ts(), type: "system", message: "ARIA v2.5.0 initialized — Adaptive Resolution & Intelligence Agent online." },
+    { id: uid(), timestamp: ts(), type: "system", message: "Tools loaded: verify_user, unlock_account, fix_vpn_connection, request_software, log_to_crm" },
+    { id: uid(), timestamp: ts(), type: "system", message: "Voice interface ready. Awaiting session start." },
   ]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [transcript, setTranscript] = useState("");
@@ -76,179 +59,143 @@ export function useVoiceAgent() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const synthRef = useRef<any>(null);
   const activeRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const addLog = useCallback((type: ConsoleEntry["type"], message: string) => {
-    setConsoleLog((prev) => [
-      ...prev,
-      { id: uid(), timestamp: ts(), type, message },
-    ]);
+    setConsoleLog((prev) => [...prev, { id: uid(), timestamp: ts(), type, message }]);
   }, []);
 
-  // ── Speak response ──────────────────────────────────────────────────────────
-  const speak = useCallback(
-    (text: string): Promise<void> => {
-      return new Promise((resolve) => {
-        if (!("speechSynthesis" in window)) {
-          resolve();
-          return;
-        }
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.05;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-        // Prefer a natural-sounding voice
-        const voices = window.speechSynthesis.getVoices();
-        const preferred = voices.find(
-          (v) =>
-            v.name.includes("Samantha") ||
-            v.name.includes("Google US English") ||
-            v.name.includes("en-US")
-        );
-        if (preferred) utterance.voice = preferred;
-        utterance.onend = () => resolve();
-        utterance.onerror = () => resolve();
-        window.speechSynthesis.speak(utterance);
-      });
-    },
-    []
-  );
+  // ── Browser TTS ─────────────────────────────────────────────────────────────
+  const speakWithBrowser = useCallback((text: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (!("speechSynthesis" in window)) { resolve(); return; }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find((v) => v.name.includes("Samantha") || v.name.includes("Google US English"));
+      if (preferred) utterance.voice = preferred;
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+      window.speechSynthesis.speak(utterance);
+    });
+  }, []);
 
-  // ── Call the agent API ──────────────────────────────────────────────────────
-  const callAgent = useCallback(
-    async (userTranscript: string) => {
-      setStatus("thinking");
-      addLog("think", `Processing: "${userTranscript}"`);
-      addLog("think", "Analyzing intent and selecting tools...");
-
-      try {
-        const res = await fetch("/api/agent", {
+  // ── ElevenLabs TTS (falls back to browser) ──────────────────────────────────
+  const speak = useCallback(async (text: string): Promise<void> => {
+    const apiKey = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
+    if (!apiKey) return speakWithBrowser(text);
+    try {
+      const res = await fetch(
+        "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM/stream",
+        {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript: userTranscript, conversationHistory }),
-        });
-
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const data = await res.json();
-
-        // Process action log → console entries
-        if (data.actionLog?.length) {
-          for (const entry of data.actionLog as ActionLogEntry[]) {
-            const label = TOOL_LABELS[entry.tool] ?? entry.tool;
-            addLog("action", `[TOOL] ${entry.tool} → ${label}`);
-            const out = entry.output as Record<string, unknown>;
-            if (out.success === false) {
-              addLog("error", `[FAIL] ${out.error ?? out.message ?? "Unknown error"}`);
-            } else {
-              const msg =
-                (out.message as string) ??
-                (out.currentStatus ? `Status: ${out.currentStatus}` : null) ??
-                "[OK]";
-              addLog("result", `[OK] ${msg}`);
-            }
-          }
+          headers: { "Content-Type": "application/json", "xi-api-key": apiKey },
+          body: JSON.stringify({
+            text,
+            model_id: "eleven_turbo_v2",
+            voice_settings: { stability: 0.45, similarity_boost: 0.85, style: 0.3, use_speaker_boost: true },
+          }),
         }
-
-        // New tickets
-        if (data.newTickets?.length) {
-          setTickets((prev) => [...prev, ...data.newTickets]);
-          for (const t of data.newTickets as Ticket[]) {
-            addLog("result", `[CRM] Ticket ${t.id} logged — ${t.summary}`);
-          }
-        }
-
-        // Update history
-        if (data.updatedHistory) {
-          setConversationHistory(data.updatedHistory);
-        }
-
-        const agentReply: string = data.response ?? "I've completed the requested actions.";
-        setLastResponse(agentReply);
-        addLog("speak", `[ARIA] ${agentReply}`);
-
-        // Speak the response
-        setStatus("speaking");
-        await speak(agentReply);
-
-        // If session still active, go back to listening
-        if (activeRef.current) {
-          startListening();
-        } else {
-          setStatus("idle");
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        addLog("error", `[ERROR] ${msg}`);
-        setStatus("error");
-        await speak("I encountered an error processing your request. Please try again.");
-        if (activeRef.current) startListening();
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversationHistory, addLog, speak]
-  );
-
-  // ── Start listening ─────────────────────────────────────────────────────────
-  const startListening = useCallback(() => {
-    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
-      addLog("error", "[ERROR] Web Speech API not supported in this browser.");
-      setStatus("error");
-      return;
+      );
+      if (!res.ok) return speakWithBrowser(text);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      return new Promise((resolve) => {
+        if (audioRef.current) { audioRef.current.pause(); URL.revokeObjectURL(audioRef.current.src); }
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+        audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+        audio.play().catch(() => resolve());
+      });
+    } catch {
+      return speakWithBrowser(text);
     }
-    
+  }, [speakWithBrowser]);
+
+  // ── Call agent ───────────────────────────────────────────────────────────────
+  const callAgent = useCallback(async (userTranscript: string) => {
+    setStatus("thinking");
+    addLog("think", `Processing: "${userTranscript}"`);
+    addLog("think", "Analyzing intent and selecting tools...");
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: userTranscript, conversationHistory }),
+      });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+
+      if (data.actionLog?.length) {
+        for (const entry of data.actionLog as ActionLogEntry[]) {
+          addLog("action", `[TOOL] ${entry.tool} → ${TOOL_LABELS[entry.tool] ?? entry.tool}`);
+          const out = entry.output as Record<string, unknown>;
+          if (out.success === false) {
+            addLog("error", `[FAIL] ${out.error ?? out.message ?? "Unknown error"}`);
+          } else {
+            addLog("result", `[OK] ${(out.message as string) ?? "[Done]"}`);
+          }
+        }
+      }
+      if (data.newTickets?.length) {
+        setTickets((prev) => [...prev, ...data.newTickets]);
+        for (const t of data.newTickets as Ticket[]) {
+          addLog("result", `[CRM] Ticket ${t.id} logged — ${t.summary}`);
+        }
+      }
+      if (data.updatedHistory) setConversationHistory(data.updatedHistory);
+
+      const reply: string = data.response ?? "I've completed the requested actions.";
+      setLastResponse(reply);
+      addLog("speak", `[ARIA] ${reply}`);
+      setStatus("speaking");
+      await speak(reply);
+      if (activeRef.current) startListening(); else setStatus("idle");
+    } catch (err) {
+      addLog("error", `[ERROR] ${err instanceof Error ? err.message : "Unknown"}`);
+      setStatus("error");
+      await speak("I encountered an error. Please try again.");
+      if (activeRef.current) startListening();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationHistory, addLog, speak]);
+
+  // ── Speech recognition ───────────────────────────────────────────────────────
+  const startListening = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
-    const SpeechRecognition = w.SpeechRecognition || w.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-
-    recognition.lang = "en-US";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.continuous = false;
-
-    recognition.onstart = () => {
-      setStatus("listening");
-      addLog("listen", "[MIC] Listening — speak now...");
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!SR) { addLog("error", "[ERROR] Use Chrome or Edge for voice support."); setStatus("error"); return; }
+    const r = new SR();
+    r.lang = "en-US"; r.interimResults = false; r.maxAlternatives = 1; r.continuous = false;
+    r.onstart = () => { setStatus("listening"); addLog("listen", "[MIC] Listening..."); };
+    r.onresult = (e: Event) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const text = (e as any).results[0][0].transcript;
+      setTranscript(text);
+      addLog("listen", `[USER] "${text}"`);
+      r.stop();
+      callAgent(text);
     };
-
-    recognition.onresult = (event: Event) => {
-     const speechEvent = event as unknown as { results: SpeechRecognitionResultList };
-     const text = speechEvent.results[0][0].transcript;
-     setTranscript(text);
-     addLog("listen", `[USER] "${text}"`);
-     recognition.stop();
-     callAgent(text);
+    r.onerror = (e: Event) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const err = (e as any).error;
+      if (err === "no-speech") { if (activeRef.current) startListening(); }
+      else { addLog("error", `[MIC] ${err}`); setStatus("error"); }
     };
-
-
-    recognition.onerror = (event: Event) => {
-      const errEvent = event as unknown as { error: string };
-      if (errEvent.error === "no-speech") {
-         addLog("system", "[MIC] No speech detected, retrying...");
-         if (activeRef.current) startListening();
-         } else {
-           addLog("error", `[MIC ERROR] ${errEvent.error}`);
-      setStatus("error");
-      }
-    };
-
-    recognition.onend = () => {
-      recognitionRef.current = null;
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
+    r.onend = () => { recognitionRef.current = null; };
+    recognitionRef.current = r;
+    r.start();
   }, [addLog, callAgent]);
 
-  // ── Session controls ────────────────────────────────────────────────────────
   const startSession = useCallback(() => {
     if (activeRef.current) return;
     activeRef.current = true;
     addLog("system", "━━━━━━ SESSION STARTED ━━━━━━");
-    addLog("system", "ARIA is now active. How can I help you today?");
     speak("Hello! I'm ARIA, your IT Support Agent. How can I help you today?").then(() => {
       if (activeRef.current) startListening();
     });
@@ -258,30 +205,14 @@ export function useVoiceAgent() {
     activeRef.current = false;
     recognitionRef.current?.stop();
     window.speechSynthesis?.cancel();
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     setStatus("idle");
     addLog("system", "━━━━━━ SESSION ENDED ━━━━━━");
   }, [addLog]);
 
   const clearLogs = useCallback(() => {
-    setConsoleLog([
-      {
-        id: uid(),
-        timestamp: ts(),
-        type: "system",
-        message: "Console cleared. ARIA ready.",
-      },
-    ]);
+    setConsoleLog([{ id: uid(), timestamp: ts(), type: "system", message: "Console cleared. ARIA ready." }]);
   }, []);
 
-  return {
-    status,
-    consoleLog,
-    tickets,
-    transcript,
-    lastResponse,
-    startSession,
-    stopSession,
-    clearLogs,
-    isActive: activeRef,
-  };
+  return { status, consoleLog, tickets, transcript, lastResponse, startSession, stopSession, clearLogs, isActive: activeRef };
 }
