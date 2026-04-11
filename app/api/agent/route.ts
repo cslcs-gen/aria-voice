@@ -1,260 +1,211 @@
-// app/api/agent/route.ts — The Agentic Brain
+// app/api/agent/route.ts — ARIA Vaping Public Health Assistant Brain
 
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  employees,
-  vpnStatus,
-  softwareInventory,
-  tickets,
-  generateTicketId,
-  type Employee,
-} from "@/lib/it-systems";
+  vapingCases,
+  generateCaseId,
+  VAPING_KNOWLEDGE,
+  type VapingCase,
+} from "@/lib/vaping-systems";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ── Tool Definitions ──────────────────────────────────────────────────────────
 const tools: Anthropic.Tool[] = [
   {
-    name: "verify_user",
+    name: "search_vaping_info",
     description:
-      "Verify an employee's identity by their Employee ID or name. Returns account status and basic profile. Always call this first before taking any action on an account.",
+      "Search the Singapore vaping knowledge base for laws, health effects, penalties, business regulations, and how to report violations. Use this for ANY question about vaping. Always call this before answering vaping-related questions to ensure accuracy.",
     input_schema: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: "Employee ID (e.g. EMP001) or full name to look up",
+          description: "The vaping-related question or topic to look up (e.g. 'penalties for possession', 'health effects', 'how to report')",
         },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    name: "unlock_account",
-    description:
-      "Unlock a locked LDAP/email account for a verified employee and issue a temporary password. Only call after verify_user confirms the account is locked.",
-    input_schema: {
-      type: "object",
-      properties: {
-        employee_id: { type: "string", description: "The employee's ID (e.g. EMP001)" },
-      },
-      required: ["employee_id"],
-    },
-  },
-  {
-    name: "fix_vpn_connection",
-    description:
-      "Check VPN status for an employee, identify certificate issues, and push a certificate refresh if needed.",
-    input_schema: {
-      type: "object",
-      properties: {
-        employee_id: { type: "string", description: "The employee's ID (e.g. EMP001)" },
-      },
-      required: ["employee_id"],
-    },
-  },
-  {
-    name: "request_software",
-    description:
-      "Check software license availability and assign a license to an employee if one is available.",
-    input_schema: {
-      type: "object",
-      properties: {
-        employee_id: { type: "string", description: "The employee's ID" },
-        software_name: {
+        category: {
           type: "string",
-          description: "Name of the software (e.g. Figma, Adobe Creative Cloud, Slack, GitHub Copilot)",
+          enum: ["laws_penalties", "health_effects", "how_to_report", "business_regulations", "general_faq", "all"],
+          description: "Category of information needed",
         },
       },
-      required: ["employee_id", "software_name"],
+      required: ["query", "category"],
     },
   },
   {
-    name: "log_to_crm",
+    name: "log_callback_case",
     description:
-      "Log a resolved or in-progress IT ticket to the CRM system. Call this after completing any action.",
+      "Log a callback case when the user's query cannot be fully answered or they request to speak with an officer. Collects name, contact, email, nature of query, and preferred callback time. Always confirm the details back to the user before logging.",
     input_schema: {
       type: "object",
       properties: {
-        employee_id: { type: "string" },
-        ticket_type: {
+        name: { type: "string", description: "Full name of the caller" },
+        contact: { type: "string", description: "Phone number of the caller" },
+        email: { type: "string", description: "Email address (optional)" },
+        query: { type: "string", description: "Summary of the query or issue that needs officer follow-up" },
+        callbackTime: { type: "string", description: "Preferred callback time (e.g. 'Morning', 'Afternoon', 'Evening', specific time)" },
+      },
+      required: ["name", "contact", "query"],
+    },
+  },
+  {
+    name: "get_case_status",
+    description: "Retrieve the status of a previously logged callback case using the case reference number.",
+    input_schema: {
+      type: "object",
+      properties: {
+        case_id: { type: "string", description: "The case reference number (e.g. VPG-20240115-AB12)" },
+      },
+      required: ["case_id"],
+    },
+  },
+  {
+    name: "list_all_cases",
+    description: "List all logged callback cases in the system. Use when user asks to see all cases or track their submissions.",
+    input_schema: {
+      type: "object",
+      properties: {
+        status_filter: {
           type: "string",
-          enum: ["account_lockout", "vpn_issue", "software_request", "general"],
-        },
-        summary: { type: "string", description: "Brief summary of what was done" },
-        status: { type: "string", enum: ["open", "in_progress", "resolved"] },
-        actions_taken: {
-          type: "array",
-          items: { type: "string" },
-          description: "List of actions performed",
+          enum: ["all", "open", "in_progress", "resolved"],
+          description: "Filter cases by status",
         },
       },
-      required: ["employee_id", "ticket_type", "summary", "status", "actions_taken"],
+      required: ["status_filter"],
     },
   },
 ];
 
 // ── Tool Implementations ──────────────────────────────────────────────────────
-function verify_user(query: string): object {
-  const q = query.toLowerCase().trim();
-  const emp =
-    employees.find((e) => e.id.toLowerCase() === q) ||
-    employees.find((e) => e.name.toLowerCase().includes(q));
+function search_vaping_info(query: string, category: string): object {
+  // Return relevant sections based on category
+  const kb = VAPING_KNOWLEDGE;
+  let relevantSections = "";
 
-  if (!emp) {
-    return { success: false, error: `No employee found matching "${query}". Please check the ID or name.` };
+  if (category === "all" || category === "laws_penalties") {
+    const match = kb.match(/## Singapore Vaping Laws[\s\S]*?(?=##|$)/);
+    if (match) relevantSections += match[0];
   }
-  emp.verified = true;
-  return {
-    success: true,
-    employee: {
-      id: emp.id,
-      name: emp.name,
-      email: emp.email,
-      department: emp.department,
-      accountStatus: emp.accountStatus,
-      lastLogin: emp.lastLogin,
-    },
-  };
-}
-
-function unlock_account(employee_id: string): object {
-  const emp = employees.find((e) => e.id === employee_id);
-  if (!emp) return { success: false, error: "Employee not found." };
-  if (!emp.verified) return { success: false, error: "Employee must be verified first." };
-  if (emp.accountStatus !== "locked")
-    return { success: false, message: `Account is already ${emp.accountStatus}. No action needed.` };
-
-  emp.accountStatus = "active";
-  const tempPassword = `TempP@ss${Math.random().toString(36).slice(-6).toUpperCase()}!`;
-  return {
-    success: true,
-    message: `Account for ${emp.name} has been unlocked in LDAP and Active Directory.`,
-    tempPassword,
-    emailSent: true,
-    instructions: `Temporary password sent to ${emp.email}. User must change on next login.`,
-  };
-}
-
-function fix_vpn_connection(employee_id: string): object {
-  const emp = employees.find((e) => e.id === employee_id);
-  if (!emp) return { success: false, error: "Employee not found." };
-
-  const vpn = vpnStatus.find((v) => v.employeeId === employee_id);
-  if (!vpn) return { success: false, error: "No VPN record found for this employee." };
-
-  if (vpn.connected) {
-    return { success: true, message: `${emp.name}'s VPN is already connected and healthy.`, action: "none" };
+  if (category === "all" || category === "health_effects") {
+    const match = kb.match(/## Health Effects[\s\S]*?(?=##|$)/);
+    if (match) relevantSections += match[0];
+  }
+  if (category === "all" || category === "how_to_report") {
+    const match = kb.match(/## How to Report[\s\S]*?(?=##|$)/);
+    if (match) relevantSections += match[0];
+  }
+  if (category === "all" || category === "business_regulations") {
+    const match = kb.match(/## Vaping Regulations for Businesses[\s\S]*?(?=##|$)/);
+    if (match) relevantSections += match[0];
+  }
+  if (category === "all" || category === "general_faq") {
+    const match = kb.match(/## Frequently Asked Questions[\s\S]*?(?=##|$)/);
+    if (match) relevantSections += match[0];
   }
 
-  const actions: string[] = [];
-  if (vpn.certificateStatus === "expired" || vpn.certificateStatus === "expiring_soon") {
-    vpn.certificateExpiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-    vpn.certificateStatus = "valid";
-    actions.push(`Certificate renewed — new expiry: ${vpn.certificateExpiry.split("T")[0]}`);
-  }
-  vpn.connected = true;
-  vpn.lastAttempt = new Date().toISOString();
-  delete vpn.errorCode;
-  actions.push("VPN tunnel re-established successfully");
+  if (!relevantSections) relevantSections = kb;
 
   return {
     success: true,
-    previousStatus: "Disconnected — certificate expired",
-    actions,
-    currentStatus: "Connected",
-    message: `VPN issue resolved for ${emp.name}. Certificate refreshed and connection restored.`,
+    query,
+    category,
+    information: relevantSections.trim(),
+    source: "Singapore Health Sciences Authority (HSA) & National Environment Agency (NEA) — Official Guidelines 2024",
+    disclaimer: "This information is based on Singapore regulations as of 2024. For the most current information, always verify with HSA at hsa.gov.sg or call 1800-117-8333.",
   };
 }
 
-function request_software(employee_id: string, software_name: string): object {
-  const emp = employees.find((e) => e.id === employee_id);
-  if (!emp) return { success: false, error: "Employee not found." };
-
-  const inv = softwareInventory.find((s) =>
-    s.software.toLowerCase().includes(software_name.toLowerCase())
-  );
-  if (!inv) {
-    const available = softwareInventory.map((s) => s.software).join(", ");
-    return { success: false, error: `Software "${software_name}" not found. Available: ${available}` };
-  }
-
-  if (inv.assignedTo.includes(employee_id)) {
-    return {
-      success: false,
-      message: `${emp.name} already has a ${inv.software} license assigned.`,
-    };
-  }
-
-  const available = inv.totalLicenses - inv.usedLicenses;
-  if (available <= 0) {
-    return {
-      success: false,
-      error: `No ${inv.software} licenses available. All ${inv.totalLicenses} are in use. Please contact procurement.`,
-    };
-  }
-
-  inv.assignedTo.push(employee_id);
-  inv.usedLicenses += 1;
-
-  return {
-    success: true,
-    software: inv.software,
-    assignedTo: emp.name,
-    licensesRemaining: inv.totalLicenses - inv.usedLicenses,
-    message: `${inv.software} license assigned to ${emp.name}. ${inv.totalLicenses - inv.usedLicenses} licenses remain.`,
-    activationEmail: `Activation link sent to ${emp.email}.`,
-  };
-}
-
-function log_to_crm(
-  employee_id: string,
-  ticket_type: "account_lockout" | "vpn_issue" | "software_request" | "general",
-  summary: string,
-  status: "open" | "in_progress" | "resolved",
-  actions_taken: string[]
+function log_callback_case(
+  name: string,
+  contact: string,
+  query: string,
+  email?: string,
+  callbackTime?: string
 ): object {
-  const emp = employees.find((e) => e.id === employee_id);
-  const ticket = {
-    id: generateTicketId(),
-    employeeId: employee_id,
-    employeeName: emp?.name ?? "Unknown",
-    type: ticket_type,
-    summary,
-    status,
+  const newCase: VapingCase = {
+    id: generateCaseId(),
+    name,
+    contact,
+    email,
+    query,
+    callbackTime: callbackTime ?? "Any time",
+    status: "open",
     createdAt: new Date().toISOString(),
-    resolvedAt: status === "resolved" ? new Date().toISOString() : undefined,
-    actions: actions_taken,
+    notes: "Case logged via ARIA voice assistant. Awaiting officer assignment.",
   };
-  tickets.push(ticket);
-  return { success: true, ticket };
+  vapingCases.push(newCase);
+
+  return {
+    success: true,
+    case: newCase,
+    message: `Case successfully logged. Reference number: ${newCase.id}. An officer will call ${name} at ${contact} ${callbackTime ? `during ${callbackTime}` : "at the earliest opportunity"}.`,
+    nextSteps: "Please save your reference number. You can track your case status by quoting this number.",
+  };
+}
+
+function get_case_status(case_id: string): object {
+  const found = vapingCases.find(
+    (c) => c.id.toLowerCase() === case_id.toLowerCase()
+  );
+  if (!found) {
+    return {
+      success: false,
+      error: `No case found with reference number ${case_id}. Please check the number and try again.`,
+    };
+  }
+  return {
+    success: true,
+    case: found,
+    message: `Case ${found.id} for ${found.name} is currently ${found.status.replace("_", " ")}. Query: ${found.query}`,
+  };
+}
+
+function list_all_cases(status_filter: string): object {
+  const filtered =
+    status_filter === "all"
+      ? vapingCases
+      : vapingCases.filter((c) => c.status === status_filter);
+
+  return {
+    success: true,
+    total: filtered.length,
+    cases: filtered.map((c) => ({
+      id: c.id,
+      name: c.name,
+      contact: c.contact,
+      query: c.query,
+      status: c.status,
+      createdAt: c.createdAt,
+      callbackTime: c.callbackTime,
+    })),
+    message: filtered.length === 0
+      ? "No cases found."
+      : `Found ${filtered.length} case(s).`,
+  };
 }
 
 // ── Tool Dispatcher ───────────────────────────────────────────────────────────
 function executeTool(name: string, input: Record<string, unknown>): string {
   let result: object;
   switch (name) {
-    case "verify_user":
-      result = verify_user(input.query as string);
+    case "search_vaping_info":
+      result = search_vaping_info(input.query as string, input.category as string);
       break;
-    case "unlock_account":
-      result = unlock_account(input.employee_id as string);
-      break;
-    case "fix_vpn_connection":
-      result = fix_vpn_connection(input.employee_id as string);
-      break;
-    case "request_software":
-      result = request_software(input.employee_id as string, input.software_name as string);
-      break;
-    case "log_to_crm":
-      result = log_to_crm(
-        input.employee_id as string,
-        input.ticket_type as "account_lockout" | "vpn_issue" | "software_request" | "general",
-        input.summary as string,
-        input.status as "open" | "in_progress" | "resolved",
-        input.actions_taken as string[]
+    case "log_callback_case":
+      result = log_callback_case(
+        input.name as string,
+        input.contact as string,
+        input.query as string,
+        input.email as string | undefined,
+        input.callbackTime as string | undefined
       );
+      break;
+    case "get_case_status":
+      result = get_case_status(input.case_id as string);
+      break;
+    case "list_all_cases":
+      result = list_all_cases(input.status_filter as string);
       break;
     default:
       result = { error: `Unknown tool: ${name}` };
@@ -270,35 +221,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No transcript provided." }, { status: 400 });
     }
 
-    const systemPrompt = `You are ARIA — Autonomous Resolution & IT Agent — an expert IT support AI.
-Your job is to resolve employee IT issues quickly and precisely by calling the right tools in sequence.
+    const systemPrompt = `You are ARIA — Adaptive Resolution & Intelligence Agent — a friendly, professional public health voice assistant for Singapore's vaping enforcement and education helpline.
 
-RULES:
-1. Always verify the user's identity first with verify_user before taking any account action.
-2. Think step-by-step. Use tools in logical order.
-3. After resolving any issue, always call log_to_crm to record it.
-4. Be concise and professional in your spoken responses. You are talking to an employee on the phone.
-5. If you cannot resolve something, explain why clearly.
-6. Never expose raw passwords in your spoken response — just confirm they were sent by email.
+YOUR PURPOSE:
+- Answer questions about Singapore vaping laws, penalties, health effects, business regulations, and how to report violations.
+- Use the search_vaping_info tool to retrieve accurate, up-to-date information before answering.
+- If a query cannot be fully answered or the caller wants to speak to an officer, collect their details and log a callback case.
+- Speak naturally as if on a phone call — be warm, concise, and helpful.
 
-Available employees: EMP001 (Sarah Chen), EMP002 (Marcus Webb), EMP003 (Priya Nair), EMP004 (Jordan Blake), EMP005 (Alex Rivera).`;
+CONVERSATION RULES:
+1. Always search for information before answering vaping questions — never answer from memory alone.
+2. Keep responses concise and spoken-friendly — no bullet points or markdown in your voice response.
+3. This is a multi-turn conversation. Never re-greet or re-introduce yourself after the first message.
+4. If the caller's question cannot be answered confidently, offer to log a callback case for an officer.
+5. When logging a case, collect: full name, contact number, and optionally email, nature of query, preferred callback time.
+6. Always confirm case details back to the caller before logging.
+7. After logging a case, give the caller their reference number clearly.
+8. Vary your language — never repeat the same phrasing twice in a conversation.
+9. Always end responses with a helpful offer like "Is there anything else I can help you with?"
+
+CASE LOGGING FLOW:
+- If user needs callback: ask for name first, then contact number, then email (optional), then preferred callback time.
+- Confirm all details before calling log_callback_case.
+- After logging, clearly state the reference number and what happens next.
+
+IMPORTANT:
+- You represent Singapore's public health authority. Be authoritative but approachable.
+- Always recommend callers verify latest regulations at hsa.gov.sg or call HSA at 1800-117-8333.
+- Never give legal advice — refer serious legal matters to qualified lawyers or HSA officers.`;
 
     const messages: Anthropic.MessageParam[] = [
-      ...conversationHistory,
+      ...(conversationHistory as Anthropic.MessageParam[]).slice(-20),
       { role: "user", content: transcript },
     ];
 
     const actionLog: Array<{ tool: string; input: object; output: object }> = [];
-    const newTickets: object[] = [];
+    const newCases: VapingCase[] = [];
 
-    // Agentic loop
     let continueLoop = true;
     let finalResponse = "";
 
     while (continueLoop) {
       const response = await anthropic.messages.create({
         model: "claude-opus-4-5",
-        max_tokens: 2048,
+        max_tokens: 1024,
         system: systemPrompt,
         tools,
         messages,
@@ -309,10 +275,8 @@ Available employees: EMP001 (Sarah Chen), EMP002 (Marcus Webb), EMP003 (Priya Na
         finalResponse = textBlock ? (textBlock as Anthropic.TextBlock).text : "";
         continueLoop = false;
       } else if (response.stop_reason === "tool_use") {
-        // Add assistant's tool_use blocks to message history
         messages.push({ role: "assistant", content: response.content });
 
-        // Execute each tool and collect results
         const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
         for (const block of response.content) {
@@ -323,9 +287,9 @@ Available employees: EMP001 (Sarah Chen), EMP002 (Marcus Webb), EMP003 (Priya Na
 
           actionLog.push({ tool: block.name, input: toolInput, output: parsed });
 
-          // Capture new tickets
-          if (block.name === "log_to_crm" && parsed.ticket) {
-            newTickets.push(parsed.ticket);
+          // Capture new cases
+          if (block.name === "log_callback_case" && parsed.case) {
+            newCases.push(parsed.case);
           }
 
           toolResults.push({
@@ -341,17 +305,16 @@ Available employees: EMP001 (Sarah Chen), EMP002 (Marcus Webb), EMP003 (Priya Na
       }
     }
 
-    // Build updated conversation history (cap at last 20 messages)
     const updatedHistory = messages.slice(-20);
 
     return NextResponse.json({
       response: finalResponse,
       actionLog,
-      newTickets,
+      newCases,
       updatedHistory,
     });
   } catch (err) {
-    console.error("[Agent Error]", err);
+    console.error("[ARIA Agent Error]", err);
     return NextResponse.json({ error: "Agent encountered an internal error." }, { status: 500 });
   }
 }
