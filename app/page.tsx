@@ -1,5 +1,5 @@
 "use client";
-// app/page.tsx — ARIA Singapore Vaping Public Health Portal v3.1
+// app/page.tsx — ARIA Singapore Vaping Portal v3.2
 
 import { useRef, useState, useEffect } from "react";
 import {
@@ -14,10 +14,8 @@ import { useVoiceAgent, type ConsoleEntry, type AgentStatus, type VapingCase } f
 
 type NavPage = "home" | "assistant" | "track";
 
-// ── Status config ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<AgentStatus, {
-  label: string; textColor: string; bgColor: string;
-  borderColor: string; glowColor: string; pulse: boolean;
+  label: string; textColor: string; bgColor: string; borderColor: string; glowColor: string; pulse: boolean;
 }> = {
   idle:      { label: "Ready",      textColor: "text-slate-500",   bgColor: "bg-slate-100",  borderColor: "border-slate-300",   glowColor: "#94a3b8", pulse: false },
   listening: { label: "Listening",  textColor: "text-emerald-700", bgColor: "bg-emerald-50", borderColor: "border-emerald-400", glowColor: "#10b981", pulse: true  },
@@ -46,28 +44,24 @@ const CASE_STATUS_STYLE: Record<string, string> = {
 function VoiceAura({ status }: { status: AgentStatus }) {
   const cfg = STATUS_CONFIG[status];
   return (
-    <div className="relative flex items-center justify-center" style={{ width: 200, height: 200 }}>
-      {[160, 126, 92].map((r, i) => (
+    <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 160, height: 160 }}>
+      {[130, 104, 78].map((r, i) => (
         <div key={i} className="absolute rounded-full border-2 transition-all duration-700"
-          style={{
-            width: r, height: r, borderColor: cfg.glowColor,
+          style={{ width: r, height: r, borderColor: cfg.glowColor,
             opacity: cfg.pulse ? 0.1 + i * 0.06 : 0.04,
             animation: cfg.pulse ? `ping ${1.6 + i * 0.3}s cubic-bezier(0,0,0.2,1) infinite` : "none",
-            animationDelay: `${i * 200}ms`,
-          }}
+            animationDelay: `${i * 200}ms` }}
         />
       ))}
-      <div
-        className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center border-2 ${cfg.borderColor} ${cfg.bgColor} shadow-lg transition-all duration-500`}
-        style={{ boxShadow: cfg.pulse ? `0 0 28px 4px ${cfg.glowColor}33` : "none" }}
-      >
-        {status === "listening" ? <Radio size={26} className={cfg.textColor + " animate-pulse"} />
-        : status === "thinking"  ? <Activity size={26} className={cfg.textColor + " animate-spin-slow"} />
-        : status === "speaking"  ? <Zap size={26} className={cfg.textColor + " animate-bounce"} />
-        : status === "error"     ? <AlertCircle size={26} className={cfg.textColor} />
-        : <Mic size={26} className={cfg.textColor} />}
+      <div className={`relative z-10 w-16 h-16 rounded-full flex items-center justify-center border-2 ${cfg.borderColor} ${cfg.bgColor} shadow-lg transition-all duration-500`}
+        style={{ boxShadow: cfg.pulse ? `0 0 24px 4px ${cfg.glowColor}33` : "none" }}>
+        {status === "listening" ? <Radio size={22} className={cfg.textColor + " animate-pulse"} />
+        : status === "thinking"  ? <Activity size={22} className={cfg.textColor + " animate-spin-slow"} />
+        : status === "speaking"  ? <Zap size={22} className={cfg.textColor + " animate-bounce"} />
+        : status === "error"     ? <AlertCircle size={22} className={cfg.textColor} />
+        : <Mic size={22} className={cfg.textColor} />}
       </div>
-      <div className={`absolute -bottom-4 px-3 py-1 rounded-full text-xs font-semibold border shadow-sm ${cfg.bgColor} ${cfg.textColor} ${cfg.borderColor}`}>
+      <div className={`absolute -bottom-3 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border shadow-sm ${cfg.bgColor} ${cfg.textColor} ${cfg.borderColor}`}>
         {cfg.label}
       </div>
     </div>
@@ -78,9 +72,9 @@ function VoiceAura({ status }: { status: AgentStatus }) {
 function Navigation({ page, onNav }: { page: NavPage; onNav: (p: NavPage) => void }) {
   const [open, setOpen] = useState(false);
   const items: { id: NavPage; label: string }[] = [
-    { id: "home",      label: "Home"           },
-    { id: "assistant", label: "Ask ARIA"        },
-    { id: "track",     label: "My Cases"        },
+    { id: "home", label: "Home" },
+    { id: "assistant", label: "Ask ARIA" },
+    { id: "track", label: "My Cases" },
   ];
   return (
     <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
@@ -96,7 +90,7 @@ function Navigation({ page, onNav }: { page: NavPage; onNav: (p: NavPage) => voi
             </div>
           </button>
           <div className="hidden md:flex items-center gap-6">
-            {items.map((item) => (
+            {items.map(item => (
               <button key={item.id} onClick={() => onNav(item.id)}
                 className={`text-sm transition-colors ${page === item.id ? "text-blue-800 font-semibold" : "text-slate-500 hover:text-slate-900"}`}>
                 {item.label}
@@ -111,9 +105,9 @@ function Navigation({ page, onNav }: { page: NavPage; onNav: (p: NavPage) => voi
       {open && (
         <div className="md:hidden border-t border-slate-200 bg-white">
           <div className="px-4 py-3 space-y-1">
-            {items.map((item) => (
+            {items.map(item => (
               <button key={item.id} onClick={() => { onNav(item.id); setOpen(false); }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${page === item.id ? "bg-blue-50 text-blue-800 font-semibold" : "text-slate-600 hover:bg-slate-50"}`}>
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm ${page === item.id ? "bg-blue-50 text-blue-800 font-semibold" : "text-slate-600 hover:bg-slate-50"}`}>
                 {item.label}
               </button>
             ))}
@@ -124,100 +118,103 @@ function Navigation({ page, onNav }: { page: NavPage; onNav: (p: NavPage) => voi
   );
 }
 
-// ── Console Panel ─────────────────────────────────────────────────────────────
+// ── Activity Console ──────────────────────────────────────────────────────────
 function ConsolePanel({ logs, onClear }: { logs: ConsoleEntry[]; onClear: () => void }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logs]);
   return (
     <div className="flex flex-col h-full bg-slate-950 rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900 border-b border-slate-700">
+      <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-700">
         <div className="flex items-center gap-2">
-          <Terminal size={12} className="text-emerald-400" />
+          <Terminal size={11} className="text-emerald-400" />
           <span className="text-[10px] font-mono font-semibold tracking-widest text-slate-300 uppercase">Activity Log</span>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-red-500/80" />
-            <span className="w-2 h-2 rounded-full bg-amber-400/80" />
-            <span className="w-2 h-2 rounded-full bg-emerald-500/80" />
-          </div>
-          <button onClick={onClear} className="text-[10px] font-mono text-slate-500 hover:text-slate-300">clear</button>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1"><span className="w-2 h-2 rounded-full bg-red-500/80" /><span className="w-2 h-2 rounded-full bg-amber-400/80" /><span className="w-2 h-2 rounded-full bg-emerald-500/80" /></div>
+          <button onClick={onClear} className="text-[9px] font-mono text-slate-500 hover:text-slate-300">clear</button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-0.5 font-mono text-[10px] scrollbar-thin scrollbar-thumb-slate scrollbar-track-transparent">
-        {logs.map((entry) => {
-          const s = LOG_STYLE[entry.type];
+        {logs.map(e => {
+          const s = LOG_STYLE[e.type];
           return (
-            <div key={entry.id} className="flex gap-2">
-              <span className="text-slate-600 shrink-0 hidden sm:inline">{entry.timestamp}</span>
-              <span className={`shrink-0 w-11 ${s.color} font-bold`}>[{s.prefix}]</span>
-              <span className={`${s.color} break-all leading-relaxed`}>{entry.message}</span>
+            <div key={e.id} className="flex gap-1.5">
+              <span className="text-slate-600 shrink-0 hidden sm:inline">{e.timestamp}</span>
+              <span className={`shrink-0 w-10 ${s.color} font-bold`}>[{s.prefix}]</span>
+              <span className={`${s.color} break-all leading-relaxed`}>{e.message}</span>
             </div>
           );
         })}
         <div ref={bottomRef} />
       </div>
-      <div className="px-3 py-2 bg-slate-900 border-t border-slate-700">
-        <span className="font-mono text-[10px] text-emerald-400">aria@helpline:~$ <span className="animate-pulse">▋</span></span>
+      <div className="px-3 py-1.5 bg-slate-900 border-t border-slate-700">
+        <span className="font-mono text-[9px] text-emerald-400">aria@helpline:~$ <span className="animate-pulse">▋</span></span>
       </div>
     </div>
   );
 }
 
-// ── Text Input ────────────────────────────────────────────────────────────────
-function TextInput({ onSend, disabled }: { onSend: (text: string) => void; disabled: boolean }) {
-  const [value, setValue] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+// ── Chat Bubbles ──────────────────────────────────────────────────────────────
+function ChatBubbles({ history }: { history: Array<{ role: "user" | "aria"; text: string }> }) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [history]);
 
-  const handleSend = () => {
-    if (!value.trim() || disabled) return;
-    onSend(value.trim());
-    setValue("");
-  };
+  if (history.length === 0) return null;
 
   return (
-    <div className="w-full flex gap-2">
-      <input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && handleSend()}
-        disabled={disabled}
-        placeholder={disabled ? "ARIA is responding..." : "Type your question here and press Enter or Send..."}
-        className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
-      />
-      <button
-        onClick={handleSend}
-        disabled={disabled || !value.trim()}
-        className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-blue-800 text-white rounded-xl font-semibold text-sm hover:bg-blue-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow"
-      >
-        <Send size={15} /> Send
-      </button>
+    <div className="w-full flex flex-col gap-2 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-slate scrollbar-track-transparent pr-1">
+      {history.map((msg, i) => (
+        <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+          <div className={`max-w-[88%] px-3.5 py-2.5 rounded-2xl text-sm shadow-sm ${
+            msg.role === "user"
+              ? "bg-blue-800 text-white rounded-tr-sm"
+              : "bg-white border border-slate-200 text-slate-800 rounded-tl-sm"
+          }`}>
+            {msg.role === "aria" && <p className="text-[9px] text-blue-500 font-semibold mb-0.5">ARIA</p>}
+            <p className="leading-relaxed">{msg.text}</p>
+          </div>
+        </div>
+      ))}
+      <div ref={bottomRef} />
     </div>
   );
 }
 
-// ── Chat Bubble ───────────────────────────────────────────────────────────────
-function ChatHistory({ transcript, lastResponse }: { transcript: string; lastResponse: string }) {
-  if (!transcript && !lastResponse) return null;
+// ── Text Input — always enabled ───────────────────────────────────────────────
+function TextInput({ onSend, status }: { onSend: (text: string) => void; status: AgentStatus }) {
+  const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isProcessing = status === "thinking" || status === "speaking";
+
+  const handleSend = () => {
+    if (!value.trim()) return;
+    onSend(value.trim());
+    setValue("");
+    inputRef.current?.focus();
+  };
+
   return (
-    <div className="w-full space-y-2">
-      {transcript && (
-        <div className="flex justify-end">
-          <div className="max-w-[85%] bg-blue-800 text-white text-sm px-4 py-2.5 rounded-2xl rounded-tr-sm shadow">
-            {transcript}
+    <div className="w-full flex gap-2">
+      <div className="flex-1 relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleSend()}
+          placeholder="Type your question and press Enter..."
+          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-10"
+        />
+        {isProcessing && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
-        </div>
-      )}
-      {lastResponse && (
-        <div className="flex justify-start">
-          <div className="max-w-[85%] bg-white border border-slate-200 text-slate-800 text-sm px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-sm">
-            <p className="text-[10px] text-blue-600 font-semibold mb-1">ARIA</p>
-            {lastResponse}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
+      <button onClick={handleSend} disabled={!value.trim()}
+        className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-blue-800 text-white rounded-xl font-semibold text-sm hover:bg-blue-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow flex-shrink-0">
+        <Send size={14} />
+      </button>
     </div>
   );
 }
@@ -225,25 +222,25 @@ function ChatHistory({ transcript, lastResponse }: { transcript: string; lastRes
 // ── Case Card ─────────────────────────────────────────────────────────────────
 function CaseCard({ c }: { c: VapingCase }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between gap-3 mb-2">
+    <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between gap-2 mb-2">
         <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <User size={12} className="text-slate-400" />
-            <span className="font-semibold text-slate-800 text-sm">{c.name}</span>
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <User size={11} className="text-slate-400" />
+            <span className="font-semibold text-slate-800 text-xs">{c.name}</span>
           </div>
-          <span className="font-mono text-[10px] text-slate-400">{c.id}</span>
+          <span className="font-mono text-[9px] text-slate-400">{c.id}</span>
         </div>
-        <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${CASE_STATUS_STYLE[c.status]}`}>
-          {c.status.replace("_", " ")}
+        <span className={`shrink-0 text-[9px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${CASE_STATUS_STYLE[c.status]}`}>
+          {c.status.replace("_"," ")}
         </span>
       </div>
-      <p className="text-slate-600 text-xs mb-2 line-clamp-2">{c.query}</p>
-      <div className="grid grid-cols-2 gap-1.5 text-[10px] text-slate-400">
-        <div className="flex items-center gap-1"><Phone size={9} />{c.contact}</div>
-        {c.email && <div className="flex items-center gap-1 truncate"><Mail size={9} />{c.email}</div>}
-        {c.callbackTime && <div className="flex items-center gap-1"><Calendar size={9} />{c.callbackTime}</div>}
-        <div className="flex items-center gap-1"><Clock size={9} />{new Date(c.createdAt).toLocaleTimeString()}</div>
+      <p className="text-slate-600 text-[11px] mb-2 line-clamp-2">{c.query}</p>
+      <div className="grid grid-cols-2 gap-1 text-[9px] text-slate-400">
+        <div className="flex items-center gap-1"><Phone size={8} />{c.contact}</div>
+        {c.email && <div className="flex items-center gap-1 truncate"><Mail size={8} />{c.email}</div>}
+        {c.callbackTime && <div className="flex items-center gap-1"><Calendar size={8} />{c.callbackTime}</div>}
+        <div className="flex items-center gap-1"><Clock size={8} />{new Date(c.createdAt).toLocaleTimeString()}</div>
       </div>
     </div>
   );
@@ -252,32 +249,30 @@ function CaseCard({ c }: { c: VapingCase }) {
 // ── Home Page ─────────────────────────────────────────────────────────────────
 function HomePage({ onNav }: { onNav: (p: NavPage) => void }) {
   const topics = [
-    { icon: Shield,        title: "Laws & Penalties",          desc: "Singapore vaping laws, fines of up to SGD 10,000 and what activities are prohibited",    color: "text-blue-600",   bg: "bg-blue-50"   },
-    { icon: Activity,      title: "Health Risks",              desc: "Short and long-term health effects of vaping including lung disease and addiction",         color: "text-red-600",    bg: "bg-red-50"    },
-    { icon: Search,        title: "How to Report",             desc: "Report vaping violations to HSA, NEA or Singapore Police Force step by step",              color: "text-green-600",  bg: "bg-green-50"  },
-    { icon: FileText,      title: "Business Compliance",       desc: "What retailers, F&B outlets, hotels and employers must do to comply with vaping rules",     color: "text-violet-600", bg: "bg-violet-50" },
-    { icon: MessageSquare, title: "Ask ARIA Anything",         desc: "Ask any vaping question by voice or text and get an instant, accurate answer",             color: "text-amber-600",  bg: "bg-amber-50"  },
-    { icon: Phone,         title: "Request Officer Callback",  desc: "Need personalised help? ARIA can log your details and arrange for an officer to call you",  color: "text-teal-600",   bg: "bg-teal-50"   },
+    { icon: Shield,         title: "Laws & Penalties",         desc: "Singapore vaping laws, fines up to SGD 10,000, and prohibited activities",                color: "text-blue-600",   bg: "bg-blue-50"   },
+    { icon: Activity,       title: "Health Risks",             desc: "Short and long-term health effects including lung disease and nicotine addiction",          color: "text-red-600",    bg: "bg-red-50"    },
+    { icon: Search,         title: "How to Report",            desc: "Step-by-step guide to reporting violations to HSA, NEA, or the Singapore Police Force",    color: "text-green-600",  bg: "bg-green-50"  },
+    { icon: FileText,       title: "Business Compliance",      desc: "Compliance requirements for retailers, F&B outlets, hotels, and workplaces",                color: "text-violet-600", bg: "bg-violet-50" },
+    { icon: MessageSquare,  title: "Ask Any Question",         desc: "Ask by voice or text — ARIA answers instantly with accurate, current information",          color: "text-amber-600",  bg: "bg-amber-50"  },
+    { icon: Phone,          title: "Officer Callback",         desc: "Cannot find your answer? Log your details and an officer will call you back",               color: "text-teal-600",   bg: "bg-teal-50"   },
   ];
 
   return (
     <div className="min-h-screen">
-      {/* Hero */}
       <section className="bg-gradient-to-b from-blue-50 to-white py-16 md:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-6">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-100 text-blue-800 border border-blue-200 text-sm font-medium">
-                <ShieldCheck className="w-4 h-4" />
-                Singapore Vaping Enforcement & Public Health
+                <ShieldCheck className="w-4 h-4" />Singapore Vaping Enforcement & Public Health
               </div>
               <h1 className="text-4xl md:text-5xl font-bold leading-tight text-slate-900">
-                Got Questions<br />About Vaping?
+                Got Questions About<br />Vaping in Singapore?
                 <br /><span className="text-blue-800">ARIA Has Answers.</span>
               </h1>
               <p className="text-lg text-slate-500 max-w-xl">
                 ARIA is Singapore's AI-powered vaping information helpline. Ask about laws, health risks,
-                how to report violations — by voice or text, anytime.
+                how to report violations — by voice or text, available 24 hours a day.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <button onClick={() => onNav("assistant")}
@@ -304,8 +299,7 @@ function HomePage({ onNav }: { onNav: (p: NavPage) => void }) {
               </div>
             </div>
 
-            {/* Preview card */}
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 space-y-5">
+            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-5 h-5 text-blue-700" />
@@ -321,13 +315,12 @@ function HomePage({ onNav }: { onNav: (p: NavPage) => void }) {
                 {[
                   "What are the penalties for vaping in public?",
                   "Can I bring a vape device into Singapore?",
-                  "How do I report a shop selling vapes?",
-                  "What are the health dangers of e-cigarettes?",
+                  "How do I report a shop selling e-cigarettes?",
+                  "What are the health dangers of vaping?",
                   "I need an officer to call me back",
                 ].map((q, i) => (
                   <div key={i} className="flex items-start gap-1.5 text-slate-600 text-xs">
-                    <ChevronRight size={10} className="text-blue-500 shrink-0 mt-0.5" />
-                    <span>{q}</span>
+                    <ChevronRight size={10} className="text-blue-500 shrink-0 mt-0.5" /><span>{q}</span>
                   </div>
                 ))}
               </div>
@@ -340,14 +333,11 @@ function HomePage({ onNav }: { onNav: (p: NavPage) => void }) {
         </div>
       </section>
 
-      {/* Topics */}
       <section className="py-14 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-10">
             <h2 className="text-3xl font-bold text-slate-900 mb-3">What Can We Help You With?</h2>
-            <p className="text-slate-500 text-sm max-w-xl mx-auto">
-              Accurate, up-to-date information on Singapore vaping regulations and health guidance — available instantly
-            </p>
+            <p className="text-slate-500 text-sm max-w-xl mx-auto">Accurate, up-to-date information on Singapore vaping regulations and health guidance</p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {topics.map((t, i) => (
@@ -367,14 +357,13 @@ function HomePage({ onNav }: { onNav: (p: NavPage) => void }) {
         </div>
       </section>
 
-      {/* Warning banner */}
       <section className="py-8 bg-amber-50 border-y border-amber-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-amber-900">Vaping is Illegal in Singapore</p>
-              <p className="text-amber-700 text-sm mt-0.5">Possession, use, importation and sale of e-cigarettes and vaping devices carries fines of up to SGD 10,000 and possible imprisonment.</p>
+              <p className="text-amber-700 text-sm mt-0.5">Possession, use, importation and sale of e-cigarettes carry fines of up to SGD 10,000 and possible imprisonment.</p>
             </div>
           </div>
           <a href="https://www.hsa.gov.sg" target="_blank" rel="noopener noreferrer"
@@ -384,12 +373,11 @@ function HomePage({ onNav }: { onNav: (p: NavPage) => void }) {
         </div>
       </section>
 
-      {/* Footer CTA */}
       <section className="py-14 bg-blue-800 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-5">
           <h2 className="text-3xl font-bold">Have a Question About Vaping in Singapore?</h2>
           <p className="text-blue-200 text-sm max-w-xl mx-auto">
-            ARIA answers instantly by voice or text — and if you need personalised help, we will arrange for an officer to call you back.
+            ARIA answers instantly by voice or text. If you need personalised help, we will arrange for an officer to call you back.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button onClick={() => onNav("assistant")}
@@ -409,22 +397,20 @@ function HomePage({ onNav }: { onNav: (p: NavPage) => void }) {
 
 // ── Assistant Page ────────────────────────────────────────────────────────────
 function AssistantPage({
-  status, consoleLog, cases, transcript, lastResponse,
+  status, consoleLog, cases, chatHistory,
   sessionActive, onToggleSession, clearLogs, onReset, onTextSend,
 }: {
   status: AgentStatus;
   consoleLog: ConsoleEntry[];
   cases: VapingCase[];
-  transcript: string;
-  lastResponse: string;
+  chatHistory: Array<{ role: "user" | "aria"; text: string }>;
   sessionActive: boolean;
   onToggleSession: () => void;
   clearLogs: () => void;
   onReset: () => void;
   onTextSend: (text: string) => void;
 }) {
-  const [mobileTab, setMobileTab] = useState<"assistant" | "console" | "cases">("assistant");
-  const isProcessing = status === "thinking" || status === "speaking";
+  const [mobileTab, setMobileTab] = useState<"chat" | "console" | "cases">("chat");
 
   const hints = [
     "What are the penalties for vaping in Singapore?",
@@ -435,61 +421,42 @@ function AssistantPage({
   ];
 
   const mobileTabs = [
-    { id: "assistant" as const, label: "Assistant", icon: <MessageSquare size={13} /> },
-    { id: "console"   as const, label: "Activity",  icon: <Terminal size={13} />,      badge: consoleLog.length },
-    { id: "cases"     as const, label: "My Cases",  icon: <FileText size={13} />,      badge: cases.length     },
+    { id: "chat"    as const, label: "Chat",     icon: <MessageSquare size={13} /> },
+    { id: "console" as const, label: "Activity", icon: <Terminal size={13} />,      badge: consoleLog.length },
+    { id: "cases"   as const, label: "Cases",    icon: <FileText size={13} />,      badge: cases.length     },
   ];
 
-  const CenterContent = () => (
-    <div className="flex flex-col items-center gap-4 w-full">
-      {/* Aura */}
-      <div className="pt-2 pb-2"><VoiceAura status={status} /></div>
+  const ChatPanel = () => (
+    <div className="flex flex-col gap-3 w-full">
+      {/* Aura + voice controls row */}
+      <div className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+        <VoiceAura status={status} />
+        <div className="flex-1 space-y-2">
+          <p className="text-xs text-slate-500 font-medium">
+            {sessionActive ? "Voice session active — speak now or type below" : "Start voice session or type your question"}
+          </p>
+          <div className="flex gap-2">
+            <button onClick={onToggleSession}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg font-semibold text-xs transition-all ${
+                sessionActive
+                  ? "bg-red-50 border border-red-200 text-red-700 hover:bg-red-100"
+                  : "bg-blue-800 text-white hover:bg-blue-900"
+              }`}>
+              {sessionActive ? <><MicOff size={13} /> End Voice</> : <><Mic size={13} /> Start Voice</>}
+            </button>
+            <button onClick={onReset} title="Reset conversation"
+              className="p-2 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors">
+              <RotateCcw size={13} />
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Chat history */}
-      <ChatHistory transcript={transcript} lastResponse={lastResponse} />
-
-      {/* Voice controls */}
-      <div className="w-full flex gap-2">
-        <button onClick={onToggleSession}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all shadow ${
-            sessionActive
-              ? "bg-red-50 border border-red-200 text-red-700 hover:bg-red-100"
-              : "bg-blue-800 text-white hover:bg-blue-900"
-          }`}>
-          {sessionActive ? <><MicOff size={15} /> End Voice Session</> : <><Mic size={15} /> Start Voice Session</>}
-        </button>
-        <button onClick={onReset} title="Reset conversation"
-          className="p-3 rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors shadow-sm">
-          <RotateCcw size={15} />
-        </button>
-      </div>
-
-      {/* Text input */}
-      <div className="w-full">
-        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1.5 flex items-center gap-1">
-          <MessageSquare size={9} /> Or type your question:
-        </p>
-        <TextInput onSend={onTextSend} disabled={isProcessing} />
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2 w-full">
-        {[
-          { icon: <CheckCircle2 size={11} className="text-emerald-500" />, label: "Resolved", value: cases.filter(c => c.status === "resolved").length, color: "text-emerald-700" },
-          { icon: <Clock size={11} className="text-amber-500" />,          label: "Open",     value: cases.filter(c => c.status === "open").length,     color: "text-amber-700"  },
-          { icon: <FileText size={11} className="text-blue-500" />,        label: "Total",    value: cases.length,                                       color: "text-blue-700"   },
-        ].map((s) => (
-          <div key={s.label} className="bg-white border border-slate-200 rounded-xl p-2.5 text-center shadow-sm">
-            <div className="flex justify-center mb-1">{s.icon}</div>
-            <p className={`text-base font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-[9px] text-slate-400 uppercase tracking-wide">{s.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Hints */}
-      {!sessionActive && !transcript && (
-        <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4">
+      {chatHistory.length > 0 ? (
+        <ChatBubbles history={chatHistory} />
+      ) : (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
           <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-2">Try asking:</p>
           {hints.map((h, i) => (
             <button key={i} onClick={() => onTextSend(h)}
@@ -500,52 +467,69 @@ function AssistantPage({
           ))}
         </div>
       )}
+
+      {/* Text input — ALWAYS available */}
+      <div>
+        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1.5">Type your question:</p>
+        <TextInput onSend={onTextSend} status={status} />
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { icon: <CheckCircle2 size={11} className="text-emerald-500" />, label: "Resolved", value: cases.filter(c => c.status === "resolved").length, color: "text-emerald-700" },
+          { icon: <Clock size={11} className="text-amber-500" />,          label: "Open",     value: cases.filter(c => c.status === "open").length,     color: "text-amber-700"  },
+          { icon: <FileText size={11} className="text-blue-500" />,        label: "Total",    value: cases.length,                                       color: "text-blue-700"   },
+        ].map(s => (
+          <div key={s.label} className="bg-white border border-slate-200 rounded-xl p-2.5 text-center shadow-sm">
+            <div className="flex justify-center mb-1">{s.icon}</div>
+            <p className={`text-base font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-[9px] text-slate-400 uppercase tracking-wide">{s.label}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium mb-3">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="mb-5">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium mb-2">
           <ShieldCheck className="w-3.5 h-3.5" /> Singapore Vaping Information Helpline
         </div>
         <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Ask ARIA</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Ask any vaping question by voice or text. Say "I need an officer to call me back" to log a callback case.
-        </p>
+        <p className="text-slate-500 text-sm mt-1">Ask any vaping question by voice or text. Say "I need an officer callback" to log a case.</p>
       </div>
 
       {/* Desktop 3-col */}
-      <div className="hidden lg:grid lg:grid-cols-3 gap-6" style={{ minHeight: "calc(100vh - 300px)" }}>
-        <div className="flex flex-col">
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+      <div className="hidden lg:grid lg:grid-cols-3 gap-5" style={{ minHeight: "calc(100vh - 260px)" }}>
+        <div className="flex flex-col gap-2">
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
             <Terminal size={11} /> Activity Log
           </h2>
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0" style={{ maxHeight: "calc(100vh - 320px)" }}>
             <ConsolePanel logs={consoleLog} onClear={clearLogs} />
           </div>
         </div>
 
-        <div className="flex flex-col items-center overflow-y-auto">
-          <CenterContent />
+        <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 260px)" }}>
+          <ChatPanel />
         </div>
 
-        <div className="flex flex-col">
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
             <Phone size={11} /> Callback Cases
-            {cases.length > 0 && (
-              <span className="ml-auto bg-blue-100 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">{cases.length}</span>
-            )}
+            {cases.length > 0 && <span className="ml-auto bg-blue-100 text-blue-700 text-[9px] font-semibold px-2 py-0.5 rounded-full">{cases.length}</span>}
           </h2>
-          <div className="flex-1 overflow-y-auto space-y-3 scrollbar-thin scrollbar-thumb-slate scrollbar-track-transparent pr-0.5">
+          <div className="flex-1 overflow-y-auto space-y-2.5 scrollbar-thin scrollbar-thumb-slate scrollbar-track-transparent" style={{ maxHeight: "calc(100vh - 320px)" }}>
             {cases.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-slate-400 text-center">
-                <Phone size={28} className="mb-3 opacity-30" />
-                <p className="text-sm font-medium">No cases logged yet</p>
-                <p className="text-xs mt-1">Say or type "I need an officer to call me back"</p>
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-center">
+                <Phone size={26} className="mb-2 opacity-30" />
+                <p className="text-xs font-medium">No cases yet</p>
+                <p className="text-[10px] mt-1">Say or type "I need an officer to call me back"</p>
               </div>
             ) : (
-              [...cases].reverse().map((c) => <CaseCard key={c.id} c={c} />)
+              [...cases].reverse().map(c => <CaseCard key={c.id} c={c} />)
             )}
           </div>
         </div>
@@ -553,33 +537,33 @@ function AssistantPage({
 
       {/* Mobile tabs */}
       <div className="lg:hidden">
-        <div className="flex border-b border-slate-200 mb-5">
-          {mobileTabs.map((tab) => (
+        <div className="flex border-b border-slate-200 mb-4">
+          {mobileTabs.map(tab => (
             <button key={tab.id} onClick={() => setMobileTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold border-b-2 transition-colors relative ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold border-b-2 transition-colors relative ${
                 mobileTab === tab.id ? "border-blue-700 text-blue-800" : "border-transparent text-slate-500"
               }`}>
               {tab.icon}{tab.label}
               {tab.badge !== undefined && tab.badge > 0 && (
-                <span className="bg-blue-700 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                  {tab.badge > 99 ? "99+" : tab.badge}
+                <span className="bg-blue-700 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                  {tab.badge > 9 ? "9+" : tab.badge}
                 </span>
               )}
             </button>
           ))}
         </div>
-        {mobileTab === "assistant" && <CenterContent />}
-        {mobileTab === "console" && <div className="h-[480px]"><ConsolePanel logs={consoleLog} onClear={clearLogs} /></div>}
-        {mobileTab === "cases" && (
+        {mobileTab === "chat"    && <ChatPanel />}
+        {mobileTab === "console" && <div className="h-[450px]"><ConsolePanel logs={consoleLog} onClear={clearLogs} /></div>}
+        {mobileTab === "cases"   && (
           <div className="space-y-3">
             {cases.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-slate-400 text-center">
-                <Phone size={28} className="mb-3 opacity-30" />
-                <p className="text-sm font-medium">No cases yet</p>
-                <p className="text-xs mt-1">Say "I need an officer to call me back"</p>
+              <div className="flex flex-col items-center justify-center py-14 text-slate-400 text-center">
+                <Phone size={26} className="mb-2 opacity-30" />
+                <p className="text-xs font-medium">No cases yet</p>
+                <p className="text-[10px] mt-1">Say or type "I need an officer to call me back"</p>
               </div>
             ) : (
-              [...cases].reverse().map((c) => <CaseCard key={c.id} c={c} />)
+              [...cases].reverse().map(c => <CaseCard key={c.id} c={c} />)
             )}
           </div>
         )}
@@ -591,7 +575,7 @@ function AssistantPage({
 // ── Track Page ────────────────────────────────────────────────────────────────
 function TrackPage({ cases }: { cases: VapingCase[] }) {
   const [search, setSearch] = useState("");
-  const filtered = cases.filter((c) =>
+  const filtered = cases.filter(c =>
     c.id.toLowerCase().includes(search.toLowerCase()) ||
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.contact.includes(search) ||
@@ -604,42 +588,35 @@ function TrackPage({ cases }: { cases: VapingCase[] }) {
         <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-1">My Callback Cases</h1>
         <p className="text-slate-500 text-sm">Search for your case using your reference number, name, or contact number</p>
       </div>
-
-      <div className="relative mb-6">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input type="text" placeholder="Search by reference number, name, or contact..."
-          value={search} onChange={(e) => setSearch(e.target.value)}
+      <div className="relative mb-5">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input type="text" placeholder="Search by reference number (e.g. VPG-...), name, or contact..."
+          value={search} onChange={e => setSearch(e.target.value)}
           className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
-
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-5">
         {[
           { label: "Total",    value: cases.length,                                     color: "text-blue-700",  bg: "bg-blue-50",  border: "border-blue-200"  },
           { label: "Open",     value: cases.filter(c => c.status === "open").length,     color: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200" },
           { label: "Resolved", value: cases.filter(c => c.status === "resolved").length, color: "text-green-700", bg: "bg-green-50", border: "border-green-200" },
-        ].map((s) => (
+        ].map(s => (
           <div key={s.label} className={`${s.bg} border ${s.border} rounded-xl p-4 text-center`}>
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
             <p className="text-xs text-slate-500 uppercase tracking-wide mt-0.5">{s.label}</p>
           </div>
         ))}
       </div>
-
       {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400 text-center">
           <TrendingUp size={36} className="mb-3 opacity-30" />
           <p className="font-medium">{cases.length === 0 ? "No cases logged yet" : "No results found"}</p>
-          <p className="text-sm mt-1">
-            {cases.length === 0
-              ? "Ask ARIA to arrange a callback and your case will appear here"
-              : "Try searching by a different term"}
-          </p>
+          <p className="text-sm mt-1">{cases.length === 0 ? "Ask ARIA to arrange a callback and your case will appear here" : "Try a different search term"}</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {[...filtered].reverse().map((c) => (
+          {[...filtered].reverse().map(c => (
             <div key={c.id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="flex items-start justify-between gap-4 mb-3">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <User size={13} className="text-slate-400" />
@@ -649,10 +626,10 @@ function TrackPage({ cases }: { cases: VapingCase[] }) {
                   <p className="text-slate-600 text-sm">{c.query}</p>
                 </div>
                 <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full uppercase tracking-wide ${CASE_STATUS_STYLE[c.status]}`}>
-                  {c.status.replace("_", " ")}
+                  {c.status.replace("_"," ")}
                 </span>
               </div>
-              <div className="grid sm:grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600">
+              <div className="grid sm:grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-sm text-slate-600">
                 <div className="flex items-center gap-2"><Phone size={12} className="text-slate-400" />{c.contact}</div>
                 {c.email && <div className="flex items-center gap-2"><Mail size={12} className="text-slate-400" />{c.email}</div>}
                 {c.callbackTime && <div className="flex items-center gap-2"><Calendar size={12} className="text-slate-400" />Callback: {c.callbackTime}</div>}
@@ -667,9 +644,9 @@ function TrackPage({ cases }: { cases: VapingCase[] }) {
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function Page() {
-  const { status, consoleLog, cases, transcript, lastResponse, startSession, stopSession, clearLogs, resetConversation, sendTextQuery } = useVoiceAgent();
+  const { status, consoleLog, cases, chatHistory, startSession, stopSession, clearLogs, resetConversation, sendTextQuery } = useVoiceAgent();
   const [sessionActive, setSessionActive] = useState(false);
   const [page, setPage] = useState<NavPage>("home");
 
@@ -694,8 +671,7 @@ export default function Page() {
         {page === "home"      && <HomePage onNav={setPage} />}
         {page === "assistant" && (
           <AssistantPage
-            status={status} consoleLog={consoleLog} cases={cases}
-            transcript={transcript} lastResponse={lastResponse}
+            status={status} consoleLog={consoleLog} cases={cases} chatHistory={chatHistory}
             sessionActive={sessionActive} onToggleSession={handleToggleSession}
             clearLogs={clearLogs} onReset={resetConversation} onTextSend={sendTextQuery}
           />
