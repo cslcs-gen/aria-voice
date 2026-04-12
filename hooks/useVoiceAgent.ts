@@ -1,5 +1,6 @@
 "use client";
-// hooks/useVoiceAgent.ts — ARIA Vaping Public Health Voice Orchestrator
+// hooks/useVoiceAgent.ts — ARIA Vaping Assistant v3.1
+// Fixes: persistent conversation history, markdown stripping, text input support
 
 import { useState, useRef, useCallback } from "react";
 
@@ -38,40 +39,61 @@ const TOOL_LABELS: Record<string, string> = {
   list_all_cases:     "Fetching all cases",
 };
 
+// Strip markdown from text before speaking
+function stripMarkdownClient(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/`(.+?)`/g, "$1")
+    .replace(/#{1,6}\s+/g, "")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/_{1,2}(.+?)_{1,2}/g, "$1")
+    .replace(/>\s+/g, "")
+    .trim();
+}
+
 function ts() { return new Date().toLocaleTimeString("en-US", { hour12: false }); }
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
 export function useVoiceAgent() {
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [consoleLog, setConsoleLog] = useState<ConsoleEntry[]>([
-    { id: uid(), timestamp: ts(), type: "system", message: "ARIA v3.0.0 — Singapore Vaping Public Health Assistant initialized." },
+    { id: uid(), timestamp: ts(), type: "system", message: "ARIA v3.1.0 — Singapore Vaping Public Health Assistant initialized." },
     { id: uid(), timestamp: ts(), type: "system", message: "Knowledge base: Singapore HSA & NEA vaping regulations 2024." },
     { id: uid(), timestamp: ts(), type: "system", message: "Tools: search_vaping_info, log_callback_case, get_case_status, list_all_cases" },
-    { id: uid(), timestamp: ts(), type: "system", message: "Voice interface ready. Awaiting session start." },
+    { id: uid(), timestamp: ts(), type: "system", message: "Ready. Use voice or type your query below." },
   ]);
   const [cases, setCases] = useState<VapingCase[]>([]);
   const [transcript, setTranscript] = useState("");
   const [lastResponse, setLastResponse] = useState("");
-  const [conversationHistory, setConversationHistory] = useState<object[]>([]);
+
+  // Conversation history stored in a ref so it NEVER resets between turns
+  const conversationHistoryRef = useRef<object[]>([]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const activeRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const sessionStartedRef = useRef(false);
 
   const addLog = useCallback((type: ConsoleEntry["type"], message: string) => {
     setConsoleLog((prev) => [...prev, { id: uid(), timestamp: ts(), type, message }]);
   }, []);
 
-  // ── Browser TTS fallback ─────────────────────────────────────────────────────
+  // ── Browser TTS ──────────────────────────────────────────────────────────────
   const speakWithBrowser = useCallback((text: string): Promise<void> => {
     return new Promise((resolve) => {
       if (!("speechSynthesis" in window)) { resolve(); return; }
       window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
+      const clean = stripMarkdownClient(text);
+      const u = new SpeechSynthesisUtterance(clean);
       u.rate = 1.0; u.pitch = 1.0;
       const voices = window.speechSynthesis.getVoices();
-      const preferred = voices.find((v) => v.name.includes("Samantha") || v.name.includes("Google US English"));
+      const preferred = voices.find((v) =>
+        v.name.includes("Samantha") || v.name.includes("Google US English") || v.lang === "en-US"
+      );
       if (preferred) u.voice = preferred;
       u.onend = () => resolve();
       u.onerror = () => resolve();
@@ -79,10 +101,11 @@ export function useVoiceAgent() {
     });
   }, []);
 
-  // ── ElevenLabs TTS with browser fallback ─────────────────────────────────────
+  // ── ElevenLabs TTS ───────────────────────────────────────────────────────────
   const speak = useCallback(async (text: string): Promise<void> => {
+    const clean = stripMarkdownClient(text);
     const apiKey = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
-    if (!apiKey) return speakWithBrowser(text);
+    if (!apiKey) return speakWithBrowser(clean);
     try {
       const res = await fetch(
         "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM/stream",
@@ -90,13 +113,13 @@ export function useVoiceAgent() {
           method: "POST",
           headers: { "Content-Type": "application/json", "xi-api-key": apiKey },
           body: JSON.stringify({
-            text,
+            text: clean,
             model_id: "eleven_turbo_v2",
             voice_settings: { stability: 0.5, similarity_boost: 0.85, style: 0.2, use_speaker_boost: true },
           }),
         }
       );
-      if (!res.ok) return speakWithBrowser(text);
+      if (!res.ok) return speakWithBrowser(clean);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       return new Promise((resolve) => {
@@ -108,25 +131,32 @@ export function useVoiceAgent() {
         audio.play().catch(() => resolve());
       });
     } catch {
-      return speakWithBrowser(text);
+      return speakWithBrowser(clean);
     }
   }, [speakWithBrowser]);
 
-  // ── Call the agent ────────────────────────────────────────────────────────────
-  const callAgent = useCallback(async (userTranscript: string) => {
+  // ── Core: send any input (voice or text) to agent ────────────────────────────
+  const sendToAgent = useCallback(async (userInput: string) => {
     setStatus("thinking");
-    addLog("think", `Processing: "${userTranscript}"`);
+    setTranscript(userInput);
+    addLog("listen", `[USER] "${userInput}"`);
+    addLog("think", "Processing query...");
 
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: userTranscript, conversationHistory }),
+        body: JSON.stringify({
+          transcript: userInput,
+          // Always send the FULL history from the ref — never from state
+          conversationHistory: conversationHistoryRef.current,
+        }),
       });
+
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       const data = await res.json();
 
-      // Process action log
+      // Process action log entries
       if (data.actionLog?.length) {
         for (const entry of data.actionLog as ActionLogEntry[]) {
           const label = TOOL_LABELS[entry.tool] ?? entry.tool;
@@ -140,25 +170,33 @@ export function useVoiceAgent() {
         }
       }
 
-      // New cases logged
+      // Update cases
       if (data.newCases?.length) {
         setCases((prev) => [...prev, ...data.newCases]);
         for (const c of data.newCases as VapingCase[]) {
-          addLog("result", `[CASE] ${c.id} logged for ${c.name} — ${c.query}`);
+          addLog("result", `[CASE] ${c.id} logged for ${c.name}`);
         }
       }
 
+      // CRITICAL: Update history ref immediately — not state — to prevent stale closures
       if (data.updatedHistory && Array.isArray(data.updatedHistory)) {
-        setConversationHistory(data.updatedHistory);
+        conversationHistoryRef.current = data.updatedHistory;
+        addLog("system", `[HISTORY] ${data.updatedHistory.length} messages in context`);
       }
 
-      const reply: string = data.response ?? "I've completed the requested actions.";
+      const reply: string = stripMarkdownClient(data.response ?? "I have completed that action.");
       setLastResponse(reply);
       addLog("speak", `[ARIA] ${reply}`);
+
       setStatus("speaking");
       await speak(reply);
 
-      if (activeRef.current) startListening(); else setStatus("idle");
+      // Resume listening only if voice session is active
+      if (activeRef.current) {
+        startListening();
+      } else {
+        setStatus("idle");
+      }
     } catch (err) {
       addLog("error", `[ERROR] ${err instanceof Error ? err.message : "Unknown"}`);
       setStatus("error");
@@ -166,42 +204,65 @@ export function useVoiceAgent() {
       if (activeRef.current) startListening();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationHistory, addLog, speak]);
+  }, [addLog, speak]);
 
   // ── Speech recognition ────────────────────────────────────────────────────────
   const startListening = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!SR) { addLog("error", "[ERROR] Use Chrome or Edge for voice support."); setStatus("error"); return; }
+    if (!SR) {
+      addLog("error", "[ERROR] Use Chrome or Edge for voice support.");
+      setStatus("error");
+      return;
+    }
     const r = new SR();
     r.lang = "en-US"; r.interimResults = false; r.maxAlternatives = 1; r.continuous = false;
     r.onstart = () => { setStatus("listening"); addLog("listen", "[MIC] Listening..."); };
     r.onresult = (e: Event) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const text = (e as any).results[0][0].transcript;
-      setTranscript(text);
-      addLog("listen", `[USER] "${text}"`);
       r.stop();
-      callAgent(text);
+      sendToAgent(text);
     };
     r.onerror = (e: Event) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const err = (e as any).error;
-      if (err === "no-speech") { if (activeRef.current) startListening(); }
-      else { addLog("error", `[MIC] ${err}`); setStatus("error"); }
+      if (err === "no-speech") {
+        addLog("system", "[MIC] No speech detected, retrying...");
+        if (activeRef.current) startListening();
+      } else {
+        addLog("error", `[MIC] ${err}`);
+        setStatus("error");
+      }
     };
     r.onend = () => { recognitionRef.current = null; };
     recognitionRef.current = r;
     r.start();
-  }, [addLog, callAgent]);
+  }, [addLog, sendToAgent]);
 
+  // ── Text input handler (for typed queries) ────────────────────────────────────
+  const sendTextQuery = useCallback((text: string) => {
+    if (!text.trim()) return;
+    // If session not started yet, initialise it silently (no greeting needed for text)
+    if (!sessionStartedRef.current) {
+      sessionStartedRef.current = true;
+      conversationHistoryRef.current = [];
+      addLog("system", "━━━━━━ TEXT SESSION STARTED ━━━━━━");
+    }
+    sendToAgent(text);
+  }, [addLog, sendToAgent]);
+
+  // ── Voice session controls ────────────────────────────────────────────────────
   const startSession = useCallback(() => {
     if (activeRef.current) return;
     activeRef.current = true;
-    addLog("system", "━━━━━━ SESSION STARTED ━━━━━━");
+    sessionStartedRef.current = true;
+    // Clear history ONLY when starting a brand new session
+    conversationHistoryRef.current = [];
+    addLog("system", "━━━━━━ VOICE SESSION STARTED ━━━━━━");
     speak(
-      "Hello! I'm ARIA, your Singapore vaping information assistant. I can help you with vaping laws, health effects, how to report violations, or log a case for an officer to call you back. How can I help you today?"
+      "Hello, I am ARIA, the Singapore vaping information assistant. I can help you with vaping laws, health effects, how to report violations, or arrange an officer to call you back. How can I help you today?"
     ).then(() => { if (activeRef.current) startListening(); });
   }, [addLog, speak, startListening]);
 
@@ -218,5 +279,17 @@ export function useVoiceAgent() {
     setConsoleLog([{ id: uid(), timestamp: ts(), type: "system", message: "Console cleared. ARIA ready." }]);
   }, []);
 
-  return { status, consoleLog, cases, transcript, lastResponse, startSession, stopSession, clearLogs, isActive: activeRef };
+  const resetConversation = useCallback(() => {
+    conversationHistoryRef.current = [];
+    sessionStartedRef.current = false;
+    setTranscript("");
+    setLastResponse("");
+    addLog("system", "[RESET] Conversation history cleared. New session ready.");
+  }, [addLog]);
+
+  return {
+    status, consoleLog, cases, transcript, lastResponse,
+    startSession, stopSession, clearLogs, resetConversation,
+    sendTextQuery, isActive: activeRef,
+  };
 }
