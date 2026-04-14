@@ -108,7 +108,6 @@ export function useVoiceAgent() {
   const srRef         = useRef<any>(null);
   const audioRef      = useRef<HTMLAudioElement | null>(null);
   const queueRef      = useRef<string[]>([]);
-  const micTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const addLog = useCallback((type: ConsoleEntry["type"], msg: string) => {
     setConsoleLog(p => [...p, { id: uid(), timestamp: ts(), type, message: msg }]);
@@ -207,7 +206,10 @@ export function useVoiceAgent() {
 
       if (isNoise(text, conf)) {
         addLog("system", `[MIC] Ignored: "${text}" (conf:${conf.toFixed(2)})`);
-        scheduleMic(400);
+        // Reopen directly — no scheduleMic to avoid stale closure
+        if (activeRef.current && !processingRef.current) {
+          setTimeout(() => openMic(), 500);
+        }
         return;
       }
       processInput(text);
@@ -220,7 +222,7 @@ export function useVoiceAgent() {
       if (err === "no-speech") {
         noSpeechRef.current += 1;
         if (noSpeechRef.current <= 6 && activeRef.current && !processingRef.current) {
-          scheduleMic(600);
+          setTimeout(() => openMic(), 700);
         } else {
           noSpeechRef.current = 0;
           activeRef.current = false;
@@ -233,13 +235,19 @@ export function useVoiceAgent() {
         activeRef.current = false;
       } else {
         addLog("error", `[MIC] ${err}`);
-        if (activeRef.current && !processingRef.current) scheduleMic(800);
+        if (activeRef.current && !processingRef.current) setTimeout(() => openMic(), 800);
       }
     };
 
     r.onend = () => {
       listeningRef.current = false;
       srRef.current = null;
+      // Safety net: if session still active and nothing else is running, reopen
+      setTimeout(() => {
+        if (activeRef.current && !listeningRef.current && !processingRef.current) {
+          openMic();
+        }
+      }, 300);
     };
 
     srRef.current = r;
@@ -252,15 +260,6 @@ export function useVoiceAgent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addLog]);
 
-  // ── Schedule mic open (clears any pending timer first) ────────────────────
-  const scheduleMic = useCallback((delayMs: number) => {
-    if (micTimerRef.current) clearTimeout(micTimerRef.current);
-    micTimerRef.current = setTimeout(() => {
-      micTimerRef.current = null;
-      openMic();
-    }, delayMs);
-  }, [openMic]);
-
   // ── Core: process any input (voice or text) ───────────────────────────────
   const processInput = useCallback(async (input: string) => {
     if (processingRef.current) {
@@ -270,7 +269,6 @@ export function useVoiceAgent() {
     }
 
     // Stop mic while processing
-    if (micTimerRef.current) { clearTimeout(micTimerRef.current); micTimerRef.current = null; }
     srRef.current?.stop();
     listeningRef.current = false;
     processingRef.current = true;
@@ -327,8 +325,12 @@ export function useVoiceAgent() {
       const next = queueRef.current.shift()!;
       setTimeout(() => processInput(next), 200);
     } else if (activeRef.current) {
-      // Short pause after TTS to prevent echo pickup
-      scheduleMic(600);
+      // Short pause after TTS, then open mic directly
+      setTimeout(() => {
+        if (activeRef.current && !processingRef.current && !listeningRef.current) {
+          openMic();
+        }
+      }, 600);
     } else {
       setStatus("idle");
     }
@@ -364,13 +366,17 @@ export function useVoiceAgent() {
     // Speak greeting in background — mic opens after it OR after 5s max, whichever is first
     setStatus("speaking");
 
-    // Open mic after 5 seconds maximum regardless of TTS
-    scheduleMic(5000);
+    // Safety: open mic after 5 seconds regardless of TTS state
+    setTimeout(() => {
+      if (activeRef.current && !processingRef.current && !listeningRef.current) {
+        openMic();
+      }
+    }, 5000);
 
-    // Also open mic as soon as speak() resolves (if faster than 5s)
+    // Open mic as soon as speak() resolves (usually faster than 5s)
     speak(greeting).then(() => {
-      if (activeRef.current && !processingRef.current) {
-        scheduleMic(400); // re-schedule with shorter delay now TTS is done
+      if (activeRef.current && !processingRef.current && !listeningRef.current) {
+        setTimeout(() => openMic(), 400);
       }
     });
 
@@ -384,7 +390,6 @@ export function useVoiceAgent() {
     noSpeechRef.current = 0;
     queueRef.current = [];
 
-    if (micTimerRef.current) { clearTimeout(micTimerRef.current); micTimerRef.current = null; }
     srRef.current?.stop();
     window.speechSynthesis?.cancel();
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
@@ -396,7 +401,6 @@ export function useVoiceAgent() {
   // ── Text query — always available ─────────────────────────────────────────
   const sendTextQuery = useCallback((text: string) => {
     if (!text.trim()) return;
-    if (micTimerRef.current) { clearTimeout(micTimerRef.current); micTimerRef.current = null; }
     srRef.current?.stop();
     listeningRef.current = false;
     processInput(text.trim());
