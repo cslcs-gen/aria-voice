@@ -424,21 +424,38 @@ export function useVoiceAgent() {
       ? "你好，我是ARIA，新加坡电子烟资讯助理。请问有什么可以帮助您？"
       : "Hello! I'm ARIA. How can I help you with vaping information today?";
 
-    // Show greeting as text bubble immediately
     addChat("aria", greeting);
     addLog("speak", `[ARIA] ${greeting}`);
+    setStatus("speaking");
 
-    // Open mic immediately — must be within user gesture context
-    openMicRef.current();
+    // PRE-WARM: Briefly start SR within the user gesture to establish permission,
+    // then immediately stop it. This registers the mic with Chrome's audio system.
+    // After greeting finishes, SR can restart cleanly without needing user gesture again.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (SR) {
+      try {
+        const warmup = new SR();
+        warmup.lang = lang === "zh" ? "zh-CN" : "en-US";
+        warmup.onend = () => {}; // suppress any events
+        warmup.onerror = () => {};
+        warmup.onresult = () => {};
+        warmup.start();
+        // Stop after 100ms — just enough to register mic permission with Chrome
+        setTimeout(() => { try { warmup.stop(); } catch {/**/} }, 100);
+      } catch {/**/}
+    }
 
-    // Play TTS greeting after a short delay so mic is already established
-    // Using setTimeout ensures we're past the synchronous user gesture window
-    // SR will discard any echo via speakingRef guard
-    setTimeout(() => {
-      if (activeRef.current) {
-        speak(greeting);
-      }
-    }, 300);
+    // Play greeting, then open mic properly after it finishes
+    speak(greeting).then(() => {
+      setTimeout(() => {
+        if (activeRef.current && !processingRef.current && !listeningRef.current) {
+          speakingRef.current = false;
+          openMicRef.current();
+        }
+      }, 400);
+    });
   },[addLog, addChat, speak]);
 
   // ── stopSession ──────────────────────────────────────────────────────────
