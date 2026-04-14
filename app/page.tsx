@@ -674,12 +674,29 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
 }) {
   const [mobileTab, setMobileTab] = useState<"chat"|"console"|"cases">("chat");
   const [voiceSupported, setVoiceSupported] = useState<boolean | null>(null);
+  const [browserName, setBrowserName] = useState<string>("");
 
-  // Detect voice support on mount
+  // Detect voice support on mount — checks both API existence and browser
   useEffect(() => {
+    const ua = navigator.userAgent;
+    // Detect Safari (but not Chrome on iOS which also has Safari UA)
+    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+    const isFirefox = ua.includes("Firefox");
+    const isChrome = ua.includes("Chrome") && !ua.includes("Edg");
+    const isEdge = ua.includes("Edg");
+
+    if (isSafari) setBrowserName("Safari");
+    else if (isFirefox) setBrowserName("Firefox");
+    else if (isChrome) setBrowserName("Chrome");
+    else if (isEdge) setBrowserName("Edge");
+    else setBrowserName("your browser");
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
-    const supported = !!(w.SpeechRecognition || w.webkitSpeechRecognition);
+    const hasAPI = !!(w.SpeechRecognition || w.webkitSpeechRecognition);
+
+    // Safari has webkitSpeechRecognition but it silently fails — treat as unsupported
+    const supported = hasAPI && !isSafari && !isFirefox;
     setVoiceSupported(supported);
   }, []);
 
@@ -767,11 +784,11 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
           <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold text-amber-900 text-sm">
-              Voice input is not supported on this browser
+              Voice input is not supported on {browserName}
             </p>
             <p className="text-amber-700 text-xs mt-1">
               Voice features require <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>.
-              Safari and Firefox do not support the Web Speech API.
+              {browserName === "Safari" ? " Safari does not support the Web Speech API." : ` ${browserName} does not support the Web Speech API.`}
             </p>
             <div className="flex gap-3 mt-3">
               <a href="https://www.google.com/chrome/" target="_blank" rel="noopener noreferrer"
@@ -784,7 +801,7 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
               </a>
             </div>
             <p className="text-amber-600 text-xs mt-2">
-              You can still use the <strong>text input</strong> below to ask ARIA questions on any browser.
+              You can still <strong>type your questions</strong> below — all ARIA features work via text input.
             </p>
           </div>
         </div>
