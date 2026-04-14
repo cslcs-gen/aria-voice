@@ -126,22 +126,42 @@ export function useVoiceAgent() {
     setChatHistory(p => [...p, { role, text: stripMd(text) }]);
   }, []);
 
-  // ── TTS: browser fallback ─────────────────────────────────────────────────
-  const speakBrowser = useCallback((text: string): Promise<void> => new Promise(resolve => {
+  // ── TTS: browser fallback (also used for Chinese) ────────────────────────
+  const speakBrowser = useCallback((text: string, lang?: string): Promise<void> => new Promise(resolve => {
     if (!("speechSynthesis" in window)) { resolve(); return; }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(stripMd(text));
     u.rate = 1.0; u.pitch = 1.0;
-    const v = window.speechSynthesis.getVoices().find(v => v.name.includes("Samantha") || v.lang === "en-US");
-    if (v) u.voice = v;
+    const voices = window.speechSynthesis.getVoices();
+    if (lang === "zh") {
+      // Find a Chinese voice — prefer zh-CN, zh-TW, or any zh voice
+      const zhVoice = voices.find(v => v.lang === "zh-CN")
+        ?? voices.find(v => v.lang.startsWith("zh"))
+        ?? voices.find(v => v.name.toLowerCase().includes("chinese"));
+      if (zhVoice) u.voice = zhVoice;
+      u.lang = "zh-CN";
+    } else {
+      const enVoice = voices.find(v => v.name.includes("Samantha") || v.lang === "en-US");
+      if (enVoice) u.voice = enVoice;
+      u.lang = "en-US";
+    }
     u.onend = () => resolve();
     u.onerror = () => resolve();
     window.speechSynthesis.speak(u);
   }), []);
 
-  // ── TTS: ElevenLabs with 8s timeout ──────────────────────────────────────
+  // Detect if text contains Chinese characters
+  const isChinese = useCallback((text: string): boolean => {
+    return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(text);
+  }, []);
+
+  // ── TTS: ElevenLabs for English, browser for Chinese ─────────────────────
   const speak = useCallback(async (text: string): Promise<void> => {
     const clean = stripMd(text);
+
+    // Always use browser TTS for Chinese — ElevenLabs English voice mispronounces Chinese
+    if (isChinese(clean)) return speakBrowser(clean, "zh");
+
     const key = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
     if (!key) return speakBrowser(clean);
     try {
@@ -168,7 +188,7 @@ export function useVoiceAgent() {
         a.play().catch(() => { done(); speakBrowser(clean); });
       });
     } catch { return speakBrowser(clean); }
-  }, [speakBrowser]);
+  }, [speakBrowser, isChinese]);
 
   // ── openMic: defined as regular function, stored in ref via useEffect ─────
   // Using useEffect to update the ref whenever dependencies change
@@ -252,6 +272,12 @@ export function useVoiceAgent() {
       srRef.current = null;
     };
 
+    // Stop any existing SR instance before starting a new one
+    // This prevents "aborted" errors when openMic is called while one is still alive
+    if (srRef.current) {
+      try { srRef.current.stop(); } catch { /* already stopped */ }
+      srRef.current = null;
+    }
     srRef.current = r;
     try { r.start(); } catch { listeningRef.current = false; setTimeout(() => openMicRef.current(), 500); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
