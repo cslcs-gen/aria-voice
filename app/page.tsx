@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import {
   useVoiceAgent, type ConsoleEntry, type AgentStatus,
-  type VapingCase, type OffenderCase,
+  type VapingCase, type OffenderCase, type Language,
 } from "@/hooks/useVoiceAgent";
 
 type NavPage = "home" | "assistant" | "faq" | "offender" | "track";
@@ -176,7 +176,7 @@ function ChatBubbles({ history }: { history: Array<{ role: "user" | "aria"; text
   );
 }
 
-function TextInput({ onSend, status }: { onSend: (text: string) => void; status: AgentStatus }) {
+function TextInput({ onSend, status, placeholder }: { onSend: (text: string) => void; status: AgentStatus; placeholder?: string }) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const isBusy = status === "thinking" || status === "speaking";
@@ -184,16 +184,15 @@ function TextInput({ onSend, status }: { onSend: (text: string) => void; status:
   return (
     <div className="w-full flex gap-2">
       <div className="flex-1 relative">
-        {/* text-slate-900 ensures typed text is always dark/visible regardless of theme */}
         <input
           ref={inputRef}
           type="text"
           value={value}
           onChange={e => setValue(e.target.value)}
           onKeyDown={e => e.key === "Enter" && handleSend()}
-          placeholder="Type your question and press Enter..."
+          placeholder={placeholder ?? "Type your question and press Enter..."}
           className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-9"
-          style={{ color: "#1e293b" /* force dark text — overrides any inherited white */ }}
+          style={{ color: "#1e293b" }}
         />
         {isBusy && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -201,7 +200,6 @@ function TextInput({ onSend, status }: { onSend: (text: string) => void; status:
           </div>
         )}
       </div>
-      {/* Send button always enabled — text input works even while ARIA is speaking */}
       <button
         onClick={handleSend}
         disabled={!value.trim()}
@@ -668,25 +666,51 @@ function OffenderPage({ lookedUpCases, onTextSend, status, chatHistory }: {
 }
 
 // ── Assistant Page ────────────────────────────────────────────────────────────
-function AssistantPage({ status, consoleLog, callbackCases, chatHistory, sessionActive, onToggleSession, clearLogs, onReset, onTextSend }: {
+function AssistantPage({ status, consoleLog, callbackCases, chatHistory, sessionActive, onToggleSession, clearLogs, onReset, onTextSend, lang, onLangChange }: {
   status: AgentStatus; consoleLog: ConsoleEntry[]; callbackCases: VapingCase[];
   chatHistory: Array<{ role: "user" | "aria"; text: string }>; sessionActive: boolean;
-  onToggleSession: () => void; clearLogs: () => void; onReset: () => void; onTextSend: (text: string) => void;
+  onToggleSession: () => void; clearLogs: () => void; onReset: () => void;
+  onTextSend: (text: string) => void; lang: Language; onLangChange: (l: Language) => void;
 }) {
   const [mobileTab, setMobileTab] = useState<"chat"|"console"|"cases">("chat");
-  const hints = ["What are the penalties for vaping in Singapore?","Is IQOS legal here?","How do I report a shop selling e-cigarettes?","What health risks does vaping cause?","I need an officer to call me back"];
+
+  const isZh = lang === "zh";
+  const hints = isZh
+    ? ["新加坡电子烟罚款是多少？","IQOS在新加坡合法吗？","我怎么举报售卖电子烟的商店？","吸电子烟有什么健康风险？","我需要执法人员回电"]
+    : ["What are the penalties for vaping in Singapore?","Is IQOS legal here?","How do I report a shop selling e-cigarettes?","What health risks does vaping cause?","I need an officer to call me back"];
 
   const ChatPanel = () => (
     <div className="flex flex-col gap-3 w-full">
       <div className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
         <VoiceAura status={status} />
         <div className="flex-1 space-y-2">
-          <p className="text-xs text-slate-500 font-medium">{sessionActive ? "Voice session active — speak now or type below" : "Start voice session or type below"}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-500 font-medium">
+              {isZh
+                ? (sessionActive ? "语音会话进行中 — 请说话或输入文字" : "开始语音会话或输入问题")
+                : (sessionActive ? "Voice session active — speak now or type below" : "Start voice session or type below")}
+            </p>
+            {/* Language toggle — disabled during active session */}
+            <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 shrink-0">
+              <button
+                onClick={() => !sessionActive && onLangChange("en")}
+                disabled={sessionActive}
+                className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-colors ${lang === "en" ? "bg-white text-blue-800 shadow-sm" : "text-slate-500 hover:text-slate-700"} disabled:cursor-not-allowed`}
+              >EN</button>
+              <button
+                onClick={() => !sessionActive && onLangChange("zh")}
+                disabled={sessionActive}
+                className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-colors ${lang === "zh" ? "bg-white text-blue-800 shadow-sm" : "text-slate-500 hover:text-slate-700"} disabled:cursor-not-allowed`}
+              >中文</button>
+            </div>
+          </div>
           <div className="flex gap-2">
             <button onClick={onToggleSession} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg font-semibold text-xs transition-all ${sessionActive ? "bg-red-50 border border-red-200 text-red-700" : "bg-blue-800 text-white hover:bg-blue-900"}`}>
-              {sessionActive ? <><MicOff size={13} /> End Voice</> : <><Mic size={13} /> Start Voice</>}
+              {sessionActive
+                ? <><MicOff size={13} />{isZh ? "结束会话" : "End Voice"}</>
+                : <><Mic size={13} />{isZh ? "开始语音会话" : "Start Voice"}</>}
             </button>
-            <button onClick={onReset} className="p-2 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"><RotateCcw size={13} /></button>
+            <button onClick={onReset} title={isZh ? "重置对话" : "Reset conversation"} className="p-2 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"><RotateCcw size={13} /></button>
           </div>
         </div>
       </div>
@@ -700,7 +724,7 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
           ))}
         </div>
       )}
-      <div><p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1.5">Type your question:</p><TextInput onSend={onTextSend} status={status} /></div>
+      <div><p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1.5">{isZh ? "输入您的问题：" : "Type your question:"}</p><TextInput onSend={onTextSend} status={status} placeholder={isZh ? "输入问题后按回车键发送..." : undefined} /></div>
       <div className="grid grid-cols-3 gap-2">
         {[{ icon:<CheckCircle2 size={11} className="text-emerald-500"/>,label:"Resolved",value:callbackCases.filter(c=>c.status==="resolved").length,color:"text-emerald-700"},
           { icon:<Clock size={11} className="text-amber-500"/>,label:"Open",value:callbackCases.filter(c=>c.status==="open").length,color:"text-amber-700"},
@@ -799,10 +823,16 @@ export default function Page() {
   const { status, consoleLog, callbackCases, lookedUpCases, chatHistory, startSession, stopSession, clearLogs, resetConversation, sendTextQuery } = useVoiceAgent();
   const [sessionActive, setSessionActive] = useState(false);
   const [page, setPage] = useState<NavPage>("home");
+  const [lang, setLang] = useState<Language>("en");
 
   const handleToggleSession = () => {
     if (sessionActive) { stopSession(); setSessionActive(false); }
-    else { startSession(); setSessionActive(true); }
+    else { startSession(lang); setSessionActive(true); }
+  };
+
+  const handleLangChange = (l: Language) => {
+    if (sessionActive) return; // cannot switch during active session
+    setLang(l);
   };
 
   return (
@@ -819,7 +849,7 @@ export default function Page() {
       <div className="min-h-screen bg-slate-50">
         <Navigation page={page} onNav={setPage} />
         {page==="home"      && <HomePage onNav={setPage} />}
-        {page==="assistant" && <AssistantPage status={status} consoleLog={consoleLog} callbackCases={callbackCases} chatHistory={chatHistory} sessionActive={sessionActive} onToggleSession={handleToggleSession} clearLogs={clearLogs} onReset={resetConversation} onTextSend={sendTextQuery} />}
+        {page==="assistant" && <AssistantPage status={status} consoleLog={consoleLog} callbackCases={callbackCases} chatHistory={chatHistory} sessionActive={sessionActive} onToggleSession={handleToggleSession} clearLogs={clearLogs} onReset={resetConversation} onTextSend={sendTextQuery} lang={lang} onLangChange={handleLangChange} />}
         {page==="faq"       && <FAQPage />}
         {page==="offender"  && <OffenderPage lookedUpCases={lookedUpCases} onTextSend={sendTextQuery} status={status} chatHistory={chatHistory} />}
         {page==="track"     && <TrackPage cases={callbackCases} />}

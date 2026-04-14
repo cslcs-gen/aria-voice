@@ -5,6 +5,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 
+export type Language = "en" | "zh";
 export type AgentStatus = "idle" | "listening" | "thinking" | "speaking" | "error";
 
 export interface ConsoleEntry {
@@ -106,6 +107,7 @@ export function useVoiceAgent() {
   const listeningRef  = useRef(false);
   const activeRef     = useRef(false);
   const noSpeechRef   = useRef(0);
+  const langRef       = useRef<Language>("en"); // current session language
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const srRef         = useRef<any>(null);
   const audioRef      = useRef<HTMLAudioElement | null>(null);
@@ -189,7 +191,7 @@ export function useVoiceAgent() {
     }
 
     const r = new SR();
-    r.lang = "en-US";
+    r.lang = langRef.current === "zh" ? "zh-CN" : "en-US";
     r.interimResults = false;
     r.maxAlternatives = 1;
     r.continuous = false;
@@ -357,7 +359,7 @@ export function useVoiceAgent() {
   }, []);
 
   // ── Start session ─────────────────────────────────────────────────────────
-  const startSession = useCallback(async () => {
+  const startSession = useCallback(async (lang: Language = "en") => {
     if (activeRef.current) return;
 
     try {
@@ -369,15 +371,19 @@ export function useVoiceAgent() {
       return;
     }
 
+    langRef.current = lang;
     activeRef.current = true;
     noSpeechRef.current = 0;
     processingRef.current = false;
     listeningRef.current = false;
     historyRef.current = [];
     setChatHistory([]);
-    addLog("system", "━━━━━━ VOICE SESSION STARTED ━━━━━━");
+    addLog("system", `━━━━━━ VOICE SESSION STARTED [${lang === "zh" ? "中文" : "EN"}] ━━━━━━`);
 
-    const greeting = "Hello, I am ARIA. How can I help you with vaping information today?";
+    const greeting = lang === "zh"
+      ? "你好，我是ARIA，新加坡电子烟资讯助理。请问有什么可以帮助您？"
+      : "Hello, I am ARIA. How can I help you with vaping information today?";
+
     addChat("aria", greeting);
     setStatus("speaking");
 
@@ -426,6 +432,6 @@ export function useVoiceAgent() {
   return {
     status, consoleLog, callbackCases, lookedUpCases, chatHistory,
     startSession, stopSession, clearLogs, resetConversation, sendTextQuery,
-    isActive: activeRef,
+    isActive: activeRef, currentLang: langRef,
   };
 }
