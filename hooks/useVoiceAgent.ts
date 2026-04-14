@@ -26,6 +26,28 @@ export interface VapingCase {
   notes?: string;
 }
 
+export interface OffenderCase {
+  caseRef: string;
+  nric: string;
+  name: string;
+  age: number;
+  offenceType: string;
+  offenceDate: string;
+  location: string;
+  description: string;
+  penaltyTier: 1 | 2 | 3;
+  penalties: {
+    fine?: { amount: number; currency: string; dueDate: string; paid: boolean };
+    rehabilitation?: { programme: string; sessions: number; startDate: string; completedSessions: number; status: string };
+    jailTerm?: { duration: string; facility: string; startDate: string; releaseDate: string; status: string };
+  };
+  status: string;
+  caseOfficer: string;
+  courtDate?: string;
+  nextAction: string;
+  timeline: Array<{ date: string; event: string; completed: boolean }>;
+}
+
 export interface ActionLogEntry {
   tool: string;
   input: object;
