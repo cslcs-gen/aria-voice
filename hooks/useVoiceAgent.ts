@@ -245,7 +245,10 @@ export function useVoiceAgent() {
       listeningRef.current = false;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const err = (e as any).error;
-      if (err === "no-speech") {
+      if (err === "aborted") {
+        // Aborted means we stopped it ourselves — do nothing, let the caller reopen
+        return;
+      } else if (err === "no-speech") {
         noSpeechRef.current += 1;
         if (noSpeechRef.current <= 6 && activeRef.current && !processingRef.current) {
           setTimeout(() => openMicRef.current(), 700);
@@ -261,9 +264,6 @@ export function useVoiceAgent() {
         activeRef.current = false;
       } else {
         addLog("error", `[MIC] ${err}`);
-        if (activeRef.current && !processingRef.current) {
-          setTimeout(() => openMicRef.current(), 800);
-        }
       }
     };
 
@@ -272,14 +272,8 @@ export function useVoiceAgent() {
       srRef.current = null;
     };
 
-    // Stop any existing SR instance before starting a new one
-    // This prevents "aborted" errors when openMic is called while one is still alive
-    if (srRef.current) {
-      try { srRef.current.stop(); } catch { /* already stopped */ }
-      srRef.current = null;
-    }
     srRef.current = r;
-    try { r.start(); } catch { listeningRef.current = false; setTimeout(() => openMicRef.current(), 500); }
+    try { r.start(); } catch { listeningRef.current = false; }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addLog]);
 
