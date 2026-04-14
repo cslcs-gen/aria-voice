@@ -1,9 +1,9 @@
 "use client";
-// hooks/useVoiceAgent.ts — ARIA v4.4
-// Key fix: mic opens on a fixed timer after session start, NOT after speak() resolves
-// This means TTS hanging/slow never blocks the microphone from opening
+// hooks/useVoiceAgent.ts — ARIA v4.5
+// Root fix: store openMic in a ref so SR callbacks always call the latest version
+// No more stale closures — mic ALWAYS reopens after each turn
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 export type AgentStatus = "idle" | "listening" | "thinking" | "speaking" | "error";
 
@@ -91,7 +91,7 @@ function isNoise(text: string, confidence: number): boolean {
 export function useVoiceAgent() {
   const [status, setStatus]               = useState<AgentStatus>("idle");
   const [consoleLog, setConsoleLog]       = useState<ConsoleEntry[]>([
-    { id: uid(), timestamp: ts(), type: "system", message: "ARIA v4.4.0 — Singapore Vaping Public Health Assistant ready." },
+    { id: uid(), timestamp: ts(), type: "system", message: "ARIA v4.5.0 — Singapore Vaping Public Health Assistant ready." },
     { id: uid(), timestamp: ts(), type: "system", message: "Capabilities: Vaping info, offender case lookup, callback case logging, FAQ generation." },
     { id: uid(), timestamp: ts(), type: "system", message: "Use voice or type your question at any time." },
   ]);
@@ -99,6 +99,7 @@ export function useVoiceAgent() {
   const [lookedUpCases, setLookedUpCases] = useState<OffenderCase[]>([]);
   const [chatHistory, setChatHistory]     = useState<Array<{ role: "user" | "aria"; text: string }>>([]);
 
+  // All mutable state in refs — prevents stale closure issues entirely
   const historyRef    = useRef<object[]>([]);
   const processingRef = useRef(false);
   const listeningRef  = useRef(false);
@@ -109,6 +110,12 @@ export function useVoiceAgent() {
   const audioRef      = useRef<HTMLAudioElement | null>(null);
   const queueRef      = useRef<string[]>([]);
 
+  // KEY FIX: store the latest openMic function in a ref
+  // SR event callbacks (onresult, onerror, onend) read from this ref
+  // so they ALWAYS call the most current version — no stale closures possible
+  const openMicRef    = useRef<() => void>(() => {});
+
+  // Stable log/chat helpers
   const addLog = useCallback((type: ConsoleEntry["type"], msg: string) => {
     setConsoleLog(p => [...p, { id: uid(), timestamp: ts(), type, message: msg }]);
   }, []);
@@ -116,7 +123,7 @@ export function useVoiceAgent() {
     setChatHistory(p => [...p, { role, text: stripMd(text) }]);
   }, []);
 
-  // ── TTS: browser ──────────────────────────────────────────────────────────
+  // ── TTS: browser fallback ─────────────────────────────────────────────────
   const speakBrowser = useCallback((text: string): Promise<void> => new Promise(resolve => {
     if (!("speechSynthesis" in window)) { resolve(); return; }
     window.speechSynthesis.cancel();
@@ -129,51 +136,42 @@ export function useVoiceAgent() {
     window.speechSynthesis.speak(u);
   }), []);
 
-  // ── TTS: ElevenLabs with 8s timeout fallback ──────────────────────────────
-  // If ElevenLabs takes more than 8 seconds, falls back to browser TTS
+  // ── TTS: ElevenLabs with 8s timeout ──────────────────────────────────────
   const speak = useCallback(async (text: string): Promise<void> => {
     const clean = stripMd(text);
     const key = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
     if (!key) return speakBrowser(clean);
-
     try {
-      // Race ElevenLabs against an 8-second timeout
-      const fetchPromise = fetch("https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM/stream", {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch("https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM/stream", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json", "xi-api-key": key },
         body: JSON.stringify({
           text: clean, model_id: "eleven_turbo_v2",
           voice_settings: { stability: 0.5, similarity_boost: 0.85, style: 0.2, use_speaker_boost: true },
         }),
       });
-      const timeoutPromise = new Promise<null>((_, reject) =>
-        setTimeout(() => reject(new Error("ElevenLabs timeout")), 8000)
-      );
-
-      const res = await Promise.race([fetchPromise, timeoutPromise]) as Response;
-      if (!res || !res.ok) return speakBrowser(clean);
-
+      clearTimeout(timer);
+      if (!res.ok) return speakBrowser(clean);
       const url = URL.createObjectURL(await res.blob());
       return new Promise(resolve => {
         if (audioRef.current) { audioRef.current.pause(); URL.revokeObjectURL(audioRef.current.src); }
         const a = new Audio(url);
         audioRef.current = a;
         const done = () => { URL.revokeObjectURL(url); resolve(); };
-        a.onended = done;
-        a.onerror = done;
+        a.onended = done; a.onerror = done;
         a.play().catch(() => { done(); speakBrowser(clean); });
       });
-    } catch {
-      return speakBrowser(clean);
-    }
+    } catch { return speakBrowser(clean); }
   }, [speakBrowser]);
 
-  // ── Open mic ──────────────────────────────────────────────────────────────
-  const openMic = useCallback(() => {
-    // Guard: don't open if session ended, already listening, or processing
-    if (!activeRef.current) return;
-    if (listeningRef.current) return;
-    if (processingRef.current) return;
+  // ── openMic: defined as regular function, stored in ref via useEffect ─────
+  // Using useEffect to update the ref whenever dependencies change
+  // SR callbacks read openMicRef.current — always the latest version
+  const openMicFn = useCallback(() => {
+    if (!activeRef.current || listeningRef.current || processingRef.current) return;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
@@ -206,13 +204,12 @@ export function useVoiceAgent() {
 
       if (isNoise(text, conf)) {
         addLog("system", `[MIC] Ignored: "${text}" (conf:${conf.toFixed(2)})`);
-        // Reopen directly — no scheduleMic to avoid stale closure
-        if (activeRef.current && !processingRef.current) {
-          setTimeout(() => openMic(), 500);
-        }
+        // Read from ref — always current
+        setTimeout(() => openMicRef.current(), 500);
         return;
       }
-      processInput(text);
+      // processInput via ref too
+      processInputRef.current(text);
     };
 
     r.onerror = (e: Event) => {
@@ -222,7 +219,7 @@ export function useVoiceAgent() {
       if (err === "no-speech") {
         noSpeechRef.current += 1;
         if (noSpeechRef.current <= 6 && activeRef.current && !processingRef.current) {
-          setTimeout(() => openMic(), 700);
+          setTimeout(() => openMicRef.current(), 700);
         } else {
           noSpeechRef.current = 0;
           activeRef.current = false;
@@ -235,40 +232,41 @@ export function useVoiceAgent() {
         activeRef.current = false;
       } else {
         addLog("error", `[MIC] ${err}`);
-        if (activeRef.current && !processingRef.current) setTimeout(() => openMic(), 800);
+        if (activeRef.current && !processingRef.current) {
+          setTimeout(() => openMicRef.current(), 800);
+        }
       }
     };
 
     r.onend = () => {
       listeningRef.current = false;
       srRef.current = null;
-      // Safety net: if session still active and nothing else is running, reopen
+      // Safety net: always reopen if session active and nothing else running
       setTimeout(() => {
         if (activeRef.current && !listeningRef.current && !processingRef.current) {
-          openMic();
+          openMicRef.current();
         }
-      }, 300);
+      }, 400);
     };
 
     srRef.current = r;
-    try {
-      r.start();
-    } catch {
-      listeningRef.current = false;
-      scheduleMic(500);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    try { r.start(); } catch { listeningRef.current = false; setTimeout(() => openMicRef.current(), 500); }
   }, [addLog]);
 
-  // ── Core: process any input (voice or text) ───────────────────────────────
-  const processInput = useCallback(async (input: string) => {
+  // Keep openMicRef always pointing to latest openMicFn
+  useEffect(() => { openMicRef.current = openMicFn; }, [openMicFn]);
+
+  // ── processInput: also stored in ref ──────────────────────────────────────
+  // This allows openMic's onresult to call processInput without stale closure
+  const processInputRef = useRef<(input: string) => void>(() => {});
+
+  const processInputFn = useCallback(async (input: string) => {
     if (processingRef.current) {
       queueRef.current.push(input);
       addLog("system", `[QUEUE] "${input}"`);
       return;
     }
 
-    // Stop mic while processing
     srRef.current?.stop();
     listeningRef.current = false;
     processingRef.current = true;
@@ -277,7 +275,6 @@ export function useVoiceAgent() {
     addLog("listen", `[USER] "${input}"`);
 
     let reply = "I encountered an error. Please try again.";
-
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
@@ -314,34 +311,36 @@ export function useVoiceAgent() {
     addChat("aria", reply);
     addLog("speak", `[ARIA] ${reply}`);
     setStatus("speaking");
-
-    // Speak, then schedule mic open after audio finishes
-    // speak() always resolves (never hangs) due to timeout
     await speak(reply);
 
     processingRef.current = false;
 
     if (queueRef.current.length > 0) {
       const next = queueRef.current.shift()!;
-      setTimeout(() => processInput(next), 200);
+      setTimeout(() => processInputRef.current(next), 200);
     } else if (activeRef.current) {
-      // Short pause after TTS, then open mic directly
-      setTimeout(() => {
-        if (activeRef.current && !processingRef.current && !listeningRef.current) {
-          openMic();
-        }
-      }, 600);
+      // Open mic after TTS ends — read from ref so always current
+      setTimeout(() => openMicRef.current(), 600);
     } else {
       setStatus("idle");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addLog, addChat, speak, scheduleMic]);
+  }, [addLog, addChat, speak]);
+
+  // Keep processInputRef always pointing to latest processInputFn
+  useEffect(() => { processInputRef.current = processInputFn; }, [processInputFn]);
+
+  // ── Public sendTextQuery ──────────────────────────────────────────────────
+  const sendTextQuery = useCallback((text: string) => {
+    if (!text.trim()) return;
+    srRef.current?.stop();
+    listeningRef.current = false;
+    processInputRef.current(text.trim());
+  }, []);
 
   // ── Start session ─────────────────────────────────────────────────────────
   const startSession = useCallback(async () => {
     if (activeRef.current) return;
 
-    // Request mic permission — shows browser dialog
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true });
       addLog("system", "[MIC] Microphone permission granted.");
@@ -359,28 +358,24 @@ export function useVoiceAgent() {
     setChatHistory([]);
     addLog("system", "━━━━━━ VOICE SESSION STARTED ━━━━━━");
 
-    // Show greeting as chat bubble immediately
     const greeting = "Hello, I am ARIA. How can I help you with vaping information today?";
     addChat("aria", greeting);
-
-    // Speak greeting in background — mic opens after it OR after 5s max, whichever is first
     setStatus("speaking");
 
-    // Safety: open mic after 5 seconds regardless of TTS state
+    // Open mic after 5s regardless (safety net for slow TTS)
     setTimeout(() => {
       if (activeRef.current && !processingRef.current && !listeningRef.current) {
-        openMic();
+        openMicRef.current();
       }
     }, 5000);
 
-    // Open mic as soon as speak() resolves (usually faster than 5s)
+    // Open mic as soon as greeting finishes
     speak(greeting).then(() => {
       if (activeRef.current && !processingRef.current && !listeningRef.current) {
-        setTimeout(() => openMic(), 400);
+        setTimeout(() => openMicRef.current(), 400);
       }
     });
-
-  }, [addLog, addChat, speak, scheduleMic]);
+  }, [addLog, addChat, speak]);
 
   // ── Stop session ──────────────────────────────────────────────────────────
   const stopSession = useCallback(() => {
@@ -389,22 +384,12 @@ export function useVoiceAgent() {
     processingRef.current = false;
     noSpeechRef.current = 0;
     queueRef.current = [];
-
     srRef.current?.stop();
     window.speechSynthesis?.cancel();
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-
     setStatus("idle");
     addLog("system", "━━━━━━ VOICE SESSION ENDED ━━━━━━");
   }, [addLog]);
-
-  // ── Text query — always available ─────────────────────────────────────────
-  const sendTextQuery = useCallback((text: string) => {
-    if (!text.trim()) return;
-    srRef.current?.stop();
-    listeningRef.current = false;
-    processInput(text.trim());
-  }, [processInput]);
 
   const clearLogs = useCallback(() => {
     setConsoleLog([{ id: uid(), timestamp: ts(), type: "system", message: "Console cleared." }]);
