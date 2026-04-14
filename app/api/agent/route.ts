@@ -1,5 +1,5 @@
-// app/api/agent/route.ts — ARIA v4.0
-// Added: lookup_offender_case tool for voice-based offender case retrieval
+// app/api/agent/route.ts — ARIA v4.1
+// Fix: extract name/contact from opening message, never re-ask for given info
 
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
@@ -35,26 +35,26 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "lookup_offender_case",
-    description: "Look up an offender's enforcement case by NRIC number or case reference number. Use when someone asks about their case, their fine, their jail term, their rehabilitation programme, or says their NRIC or case reference number.",
+    description: "Look up an offender enforcement case by NRIC or case reference number.",
     input_schema: {
       type: "object",
       properties: {
-        identifier: { type: "string", description: "NRIC number (e.g. S8712123A) or case reference (e.g. OFC-2024-0891)" },
+        identifier: { type: "string", description: "NRIC (e.g. S8712123A) or case reference (e.g. OFC-2024-0891)" },
       },
       required: ["identifier"],
     },
   },
   {
     name: "log_callback_case",
-    description: "Log a callback case when user needs officer follow-up. Call ONLY when you have name AND contact number. Log immediately — do not ask for extra info beyond name and contact.",
+    description: "Log a callback case for officer follow-up. Call this as soon as you have the caller's name AND contact number — do not wait for more information. The query field should summarise what the caller needs based on the full conversation.",
     input_schema: {
       type: "object",
       properties: {
-        name:         { type: "string" },
-        contact:      { type: "string" },
-        email:        { type: "string" },
-        query:        { type: "string" },
-        callbackTime: { type: "string" },
+        name:         { type: "string", description: "Caller's full name" },
+        contact:      { type: "string", description: "Caller's phone number" },
+        email:        { type: "string", description: "Email address (optional)" },
+        query:        { type: "string", description: "Summary of what the caller needs help with" },
+        callbackTime: { type: "string", description: "Preferred callback time (optional)" },
       },
       required: ["name","contact","query"],
     },
@@ -82,52 +82,32 @@ function handle_search(query: string, category: string): string {
   };
   const regex = sectionMap[category];
   const match = regex ? kb.match(regex) : null;
-  return JSON.stringify({ success: true, query, information: (match ? match[0] : kb).trim(), source: "Singapore HSA & NEA 2024" });
+  return JSON.stringify({
+    success: true, query,
+    information: (match ? match[0] : kb).trim(),
+    source: "Singapore HSA & NEA 2024",
+  });
 }
 
 function handle_lookup_offender(identifier: string): string {
   const id = identifier.trim().toUpperCase().replace(/\s/g, "");
-
-  // Try NRIC match first (case-insensitive full NRIC)
-  let found: OffenderCase | undefined = offenderCases.find(
-    c => c.nricFull.toUpperCase() === id
-  );
-
-  // Try case reference match
-  if (!found) {
-    found = offenderCases.find(
-      c => c.caseRef.toUpperCase() === id
-    );
-  }
-
+  const found = offenderCases.find(c => c.nricFull.toUpperCase() === id) ??
+                offenderCases.find(c => c.caseRef.toUpperCase() === id);
   if (!found) {
     return JSON.stringify({
       success: false,
-      error: `No case found for ${identifier}. Please check your NRIC or case reference number and try again. If you believe this is an error, please call HSA at 1800-117-8333.`,
+      error: `No case found for ${identifier}. Please check your NRIC or case reference number. If you believe this is an error, call HSA at 1800-117-8333.`,
     });
   }
-
-  // Build a spoken-friendly summary
-  const f = found;
   const penaltyParts: string[] = [];
-  if (f.penalties.fine) {
-    penaltyParts.push(`Fine of SGD ${f.penalties.fine.amount.toLocaleString()} ${f.penalties.fine.paid ? "(paid)" : `(due ${f.penalties.fine.dueDate})`}`);
-  }
-  if (f.penalties.rehabilitation) {
-    penaltyParts.push(`Rehabilitation: ${f.penalties.rehabilitation.programme} — ${f.penalties.rehabilitation.completedSessions} of ${f.penalties.rehabilitation.sessions} sessions completed — status: ${f.penalties.rehabilitation.status}`);
-  }
-  if (f.penalties.jailTerm) {
-    penaltyParts.push(`Custodial sentence: ${f.penalties.jailTerm.duration} at ${f.penalties.jailTerm.facility} — status: ${f.penalties.jailTerm.status} — expected release: ${f.penalties.jailTerm.releaseDate}`);
-  }
-
-  const tierLabel = f.penaltyTier === 1 ? "Tier 1 — First Offence" : f.penaltyTier === 2 ? "Tier 2 — Repeat Offence / Enhanced" : "Tier 3 — Serious Offence";
-
+  if (found.penalties.fine) penaltyParts.push(`Fine of SGD ${found.penalties.fine.amount.toLocaleString()} ${found.penalties.fine.paid ? "(paid)" : `(due ${found.penalties.fine.dueDate})`}`);
+  if (found.penalties.rehabilitation) penaltyParts.push(`Rehabilitation: ${found.penalties.rehabilitation.programme} — ${found.penalties.rehabilitation.completedSessions} of ${found.penalties.rehabilitation.sessions} sessions — ${found.penalties.rehabilitation.status}`);
+  if (found.penalties.jailTerm) penaltyParts.push(`Custodial sentence: ${found.penalties.jailTerm.duration} at ${found.penalties.jailTerm.facility} — ${found.penalties.jailTerm.status} — release: ${found.penalties.jailTerm.releaseDate}`);
+  const tierLabel = found.penaltyTier === 1 ? "Tier 1 First Offence" : found.penaltyTier === 2 ? "Tier 2 Repeat Offence" : "Tier 3 Serious Offence";
   return JSON.stringify({
-    success: true,
-    case: f,
-    summary: `Case ${f.caseRef} for ${f.name}. Offence: ${f.offenceType} on ${f.offenceDate} at ${f.location}. Penalty tier: ${tierLabel}. Penalties: ${penaltyParts.join("; ")}. Case status: ${f.status}. Next action: ${f.nextAction}. Case officer: ${f.caseOfficer}.`,
-    penaltySummary: penaltyParts,
-    tierLabel,
+    success: true, case: found,
+    summary: `Case ${found.caseRef} for ${found.name}. Offence: ${found.offenceType} on ${found.offenceDate} at ${found.location}. Penalty tier: ${tierLabel}. Penalties: ${penaltyParts.join("; ")}. Status: ${found.status}. Next action: ${found.nextAction}. Case officer: ${found.caseOfficer}.`,
+    penaltySummary: penaltyParts, tierLabel,
   });
 }
 
@@ -166,17 +146,37 @@ export async function POST(req: NextRequest) {
 YOUR CAPABILITIES:
 1. Answer questions about Singapore vaping laws, health effects, reporting, and business regulations.
 2. Look up offender enforcement cases by NRIC or case reference number.
-3. Log callback cases for members of the public who need officer assistance.
+3. Log callback cases for callers who need officer assistance.
 
-STRICT RULES — READ CAREFULLY:
-1. Continuous conversation — you have FULL memory. NEVER re-introduce yourself after the first message.
-2. No markdown. No asterisks, bold, bullets, or symbols. Plain spoken sentences only.
-3. Keep responses to 2 to 3 sentences per turn maximum.
-4. Always search before answering vaping information questions.
-5. For offender case lookup: when someone mentions their NRIC or case reference, immediately call lookup_offender_case. Confirm the masked NRIC back to them before sharing full details.
-6. For callback cases: ask name, then contact number. Log immediately when you have both. Do not delay.
-7. After logging or looking up a case, clearly state the reference number and next steps in plain speech.
-8. Be empathetic with offenders — they may be stressed. Explain their situation clearly and direct them to their case officer for further help.`;
+ABSOLUTE RULES — MUST FOLLOW EXACTLY:
+
+RULE 1 — EXTRACT INFORMATION FROM WHAT THE CALLER SAYS:
+- Read every message carefully for name, phone number, email, and callback preference.
+- If the caller says "I am Sarah" or "My name is Sarah" or "This is Sarah" — their name is Sarah. Use it immediately.
+- If the caller says "I am Sarah, I want a callback" — you already have their name. Do NOT ask for it again.
+- If the caller gives name and phone number in one message — call log_callback_case immediately without asking anything else.
+- NEVER ask for information the caller has already provided in this conversation.
+
+RULE 2 — CALLBACK CASE COLLECTION SEQUENCE:
+- Step 1: You need the caller's name. Check if they already gave it. If yes, skip to Step 2.
+- Step 2: You need their contact number. Ask for it if not given.
+- Step 3: Once you have name AND contact number — call log_callback_case IMMEDIATELY. Do not ask for email or callback time unless the caller volunteers it.
+- The query field should be a summary of what the caller told you they need help with.
+
+RULE 3 — CONVERSATION CONTINUITY:
+- This is a continuous conversation. You have full memory of everything said.
+- NEVER re-introduce yourself after the first message.
+- NEVER say Hello or How can I help after the first turn.
+- Vary your responses — never repeat the same phrasing.
+
+RULE 4 — VOICE FORMATTING:
+- No markdown. No asterisks, bold, bullets, or symbols. Plain spoken sentences only.
+- Keep responses to 2 sentences maximum per turn.
+- After completing an action, confirm it briefly and stop. Do not add unnecessary follow-up questions.
+
+RULE 5 — INFORMATION SEARCH:
+- Always call search_vaping_info before answering vaping law or health questions.
+- Never answer from memory alone on regulatory matters.`;
 
     const messages: Anthropic.MessageParam[] = [
       ...(conversationHistory as Anthropic.MessageParam[]),
@@ -193,7 +193,7 @@ STRICT RULES — READ CAREFULLY:
       iterations++;
       const response = await anthropic.messages.create({
         model: "claude-opus-4-5",
-        max_tokens: 350,
+        max_tokens: 250, // Short responses — voice assistant, not a chatbot
         system,
         tools,
         messages,
@@ -237,6 +237,9 @@ STRICT RULES — READ CAREFULLY:
           } else if (block.name === "get_case_status") {
             resultJson = handle_get_status(input.case_id as string);
             actionLog.push({ tool: block.name, input, output: JSON.parse(resultJson) });
+
+          } else {
+            resultJson = JSON.stringify({ error: `Unknown tool: ${block.name}` });
           }
 
           toolResults.push({ type: "tool_result", tool_use_id: block.id, content: resultJson });
@@ -249,7 +252,7 @@ STRICT RULES — READ CAREFULLY:
     }
 
     if (!finalResponse) {
-      finalResponse = "I am sorry, I was unable to complete that request. Please try again or rephrase your question.";
+      finalResponse = "I am sorry, I was unable to complete that request. Please try again.";
     }
 
     return NextResponse.json({
