@@ -412,6 +412,7 @@ export function useVoiceAgent() {
     activeRef.current     = true;
     processingRef.current = false;
     listeningRef.current  = false;
+    speakingRef.current   = false;
     noSpeechRef.current   = 0;
     backoffRef.current    = 300;
     historyRef.current    = [];
@@ -421,25 +422,16 @@ export function useVoiceAgent() {
 
     const greeting = lang === "zh"
       ? "你好，我是ARIA，新加坡电子烟资讯助理。请问有什么可以帮助您？"
-      : "Hello, I am ARIA. How can I help you with vaping information today?";
+      : "Hello! I'm ARIA. Please speak your question after the beep.";
 
+    // Show greeting as text bubble — no TTS on start to avoid audio/SR conflict
     addChat("aria", greeting);
+    addLog("speak", `[ARIA] ${greeting}`);
 
-    // CRITICAL: Start SR immediately within the user gesture (button click) context.
-    // Chrome blocks SR if started after async operations (TTS fetch, setTimeout, etc).
-    // We open mic first, speak greeting in parallel — mic will capture after greeting ends.
-    // The greeting plays through the speaker; SR captures what comes AFTER it.
-    setStatus("listening");
+    // Open mic immediately — we are still inside the button click user gesture
+    // Chrome requires SR.start() within a user gesture context
     openMicRef.current();
-
-    // Speak greeting in background — does not block mic
-    speak(greeting).then(() => {
-      // Greeting finished — if mic died during playback, reopen it
-      if (activeRef.current && !processingRef.current && !listeningRef.current) {
-        setTimeout(() => openMicRef.current(), 300);
-      }
-    });
-  },[addLog, addChat, speak]);
+  },[addLog, addChat]);
 
   // ── stopSession ──────────────────────────────────────────────────────────
   const stopSession = useCallback(() => {
