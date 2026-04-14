@@ -88,9 +88,10 @@ export function useVoiceAgent() {
   const noSpeechRef   = useRef(0);
   const backoffRef    = useRef(300);          // ms, doubles on each no-speech
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const srRef         = useRef<any>(null);
+  const srRef         = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const audioRef      = useRef<HTMLAudioElement|null>(null);
   const queueRef      = useRef<string[]>([]);
+  const speakingRef   = useRef(false);     // true while TTS is playing
   const srTimerRef    = useRef<ReturnType<typeof setTimeout>|null>(null); // 50s restart timer
   const watchdogRef   = useRef<ReturnType<typeof setInterval>|null>(null);// heartbeat
   const lastSrEventRef = useRef<number>(0); // timestamp of last SR event
@@ -129,28 +130,37 @@ export function useVoiceAgent() {
   // ── TTS: ElevenLabs for English, browser for Chinese ────────────────────
   const speak = useCallback(async (text:string):Promise<void> => {
     const clean = stripMd(text);
-    if (isChinese(clean)) return speakBrowser(clean,"zh");
-    const key = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
-    if (!key) return speakBrowser(clean);
+    speakingRef.current = true;
     try {
-      const ctrl = new AbortController();
-      const t = setTimeout(()=>ctrl.abort(), 8000);
-      const res = await fetch("https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM/stream",{
-        method:"POST", signal:ctrl.signal,
-        headers:{"Content-Type":"application/json","xi-api-key":key},
-        body:JSON.stringify({text:clean,model_id:"eleven_turbo_v2",
-          voice_settings:{stability:0.5,similarity_boost:0.85,style:0.2,use_speaker_boost:true}}),
-      });
-      clearTimeout(t);
-      if (!res.ok) return speakBrowser(clean);
-      const url = URL.createObjectURL(await res.blob());
-      return new Promise(resolve=>{
-        if (audioRef.current){audioRef.current.pause();URL.revokeObjectURL(audioRef.current.src);}
-        const a = new Audio(url); audioRef.current = a;
-        const done = ()=>{URL.revokeObjectURL(url);resolve();};
-        a.onended=done; a.onerror=done; a.play().catch(()=>{done();speakBrowser(clean);});
-      });
-    } catch { return speakBrowser(clean); }
+      if (isChinese(clean)) {
+        await speakBrowser(clean,"zh");
+        speakingRef.current = false;
+        return;
+      }
+      const key = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
+      if (!key) { await speakBrowser(clean); speakingRef.current = false; return; }
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(()=>ctrl.abort(), 8000);
+        const res = await fetch("https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM/stream",{
+          method:"POST", signal:ctrl.signal,
+          headers:{"Content-Type":"application/json","xi-api-key":key},
+          body:JSON.stringify({text:clean,model_id:"eleven_turbo_v2",
+            voice_settings:{stability:0.5,similarity_boost:0.85,style:0.2,use_speaker_boost:true}}),
+        });
+        clearTimeout(t);
+        if (!res.ok) { await speakBrowser(clean); speakingRef.current = false; return; }
+        const url = URL.createObjectURL(await res.blob());
+        await new Promise<void>(resolve=>{
+          if (audioRef.current){audioRef.current.pause();URL.revokeObjectURL(audioRef.current.src);}
+          const a = new Audio(url); audioRef.current = a;
+          const done = ()=>{URL.revokeObjectURL(url);resolve();};
+          a.onended=done; a.onerror=done; a.play().catch(async()=>{done(); await speakBrowser(clean);});
+        });
+      } catch { await speakBrowser(clean); }
+    } finally {
+      speakingRef.current = false;
+    }
   },[speakBrowser]);
 
   // ── Stop SR cleanly ──────────────────────────────────────────────────────
@@ -210,11 +220,20 @@ export function useVoiceAgent() {
 
     r.onresult = (e: Event) => {
       lastSrEventRef.current = Date.now();
-      stopSR(); // clean stop before processing
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = (e as any).results[0][0];
       const text: string = result.transcript ?? "";
       const conf: number = result.confidence ?? 1;
+
+      // Discard if TTS is still playing — this is echo from the speaker
+      if (speakingRef.current) {
+        addLog("system",`[MIC] Echo discarded during TTS: "${text}"`);
+        stopSR();
+        setTimeout(() => openMicRef.current(), 600);
+        return;
+      }
+
+      stopSR(); // clean stop before processing
 
       if (isNoise(text, conf)) {
         addLog("system",`[MIC] Ignored: "${text}" (conf:${conf.toFixed(2)})`);
@@ -405,18 +424,19 @@ export function useVoiceAgent() {
       : "Hello, I am ARIA. How can I help you with vaping information today?";
 
     addChat("aria", greeting);
-    setStatus("speaking");
 
-    // Safety: open mic 6 seconds after start regardless of TTS speed
-    setTimeout(() => {
-      if (activeRef.current && !processingRef.current && !listeningRef.current) {
-        openMicRef.current();
-      }
-    }, 6000);
+    // CRITICAL: Start SR immediately within the user gesture (button click) context.
+    // Chrome blocks SR if started after async operations (TTS fetch, setTimeout, etc).
+    // We open mic first, speak greeting in parallel — mic will capture after greeting ends.
+    // The greeting plays through the speaker; SR captures what comes AFTER it.
+    setStatus("listening");
+    openMicRef.current();
 
+    // Speak greeting in background — does not block mic
     speak(greeting).then(() => {
+      // Greeting finished — if mic died during playback, reopen it
       if (activeRef.current && !processingRef.current && !listeningRef.current) {
-        setTimeout(() => openMicRef.current(), 500);
+        setTimeout(() => openMicRef.current(), 300);
       }
     });
   },[addLog, addChat, speak]);
@@ -425,6 +445,7 @@ export function useVoiceAgent() {
   const stopSession = useCallback(() => {
     activeRef.current     = false;
     processingRef.current = false;
+    speakingRef.current   = false;
     noSpeechRef.current   = 0;
     queueRef.current      = [];
     stopSR();
