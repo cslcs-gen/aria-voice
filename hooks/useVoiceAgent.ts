@@ -77,13 +77,14 @@ function uid() { return Math.random().toString(36).slice(2, 9); }
 const NOISE_PHRASES = new Set([
   "", "okay", "ok", "yes", "no", "hmm", "um", "uh", "ah", "oh",
   "hey", "hi", "bye", "goodbye", "thanks", "thank you", "sure",
-  "right", "alright", "i see",
+  "right", "alright", "i see", "and i can", "and i", "i can",
+  "you can", "you may", "please", "what", "that", "this",
 ]);
 
 function isNoise(text: string, confidence: number): boolean {
   const t = text.trim().toLowerCase();
   if (t.length < 3) return true;
-  if (confidence < 0.45) return true;
+  if (confidence < 0.2) return true;  // lowered from 0.45 — real speech is often 0.3-0.5
   if (NOISE_PHRASES.has(t)) return true;
   return false;
 }
@@ -172,6 +173,12 @@ export function useVoiceAgent() {
   // SR callbacks read openMicRef.current — always the latest version
   const openMicFn = useCallback(() => {
     if (!activeRef.current || listeningRef.current || processingRef.current) return;
+
+    // Stop any audio still playing — prevents speaker echo into mic
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
+    }
+    window.speechSynthesis?.cancel();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
@@ -332,7 +339,7 @@ export function useVoiceAgent() {
           }
         }, 300);
       };
-      setTimeout(tryOpen, 500);
+      setTimeout(tryOpen, 800); // 800ms after TTS ends — gives audio hardware time to switch
     } else {
       setStatus("idle");
     }
