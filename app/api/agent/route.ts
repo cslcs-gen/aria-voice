@@ -90,13 +90,36 @@ function handle_search(query: string, category: string): string {
 }
 
 function handle_lookup_offender(identifier: string): string {
-  const id = identifier.trim().toUpperCase().replace(/\s/g, "");
-  const found = offenderCases.find(c => c.nricFull.toUpperCase() === id) ??
-                offenderCases.find(c => c.caseRef.toUpperCase() === id);
+  // Clean input: remove spaces, dashes, make uppercase
+  const id = identifier.trim().toUpperCase().replace(/[\s\-\.]/g, "");
+
+  // Try exact NRIC match
+  let found = offenderCases.find(c => c.nricFull.toUpperCase() === id);
+
+  // Try exact case reference match
+  if (!found) found = offenderCases.find(c => c.caseRef.toUpperCase() === id);
+
+  // Try partial match — voice may transcribe "S8712123A" as "S 8712123 A" etc
+  if (!found) {
+    found = offenderCases.find(c => {
+      const nric = c.nricFull.toUpperCase().replace(/[\s\-]/g, "");
+      const ref  = c.caseRef.toUpperCase().replace(/[\s\-]/g, "");
+      return nric === id || ref === id || nric.includes(id) || ref.includes(id) || id.includes(nric) || id.includes(ref);
+    });
+  }
+
+  // Try matching just the numeric portion (7 digits) in case letters were dropped
+  if (!found) {
+    const digitsOnly = id.replace(/[^0-9]/g, "");
+    if (digitsOnly.length >= 5) {
+      found = offenderCases.find(c => c.nricFull.replace(/[^0-9]/g, "") === digitsOnly);
+    }
+  }
+
   if (!found) {
     return JSON.stringify({
       success: false,
-      error: `No case found for ${identifier}. Please check your NRIC or case reference number. If you believe this is an error, call HSA at 1800-117-8333.`,
+      error: `No case found for the identifier "${identifier}". Please verify the NRIC or case reference. Demo NRICs: S8712123A, T9234890B, S7845456C, G9912789D. Demo case ref: OFC-2023-0445.`,
     });
   }
   const penaltyParts: string[] = [];
@@ -150,33 +173,36 @@ YOUR CAPABILITIES:
 
 ABSOLUTE RULES — MUST FOLLOW EXACTLY:
 
-RULE 1 — EXTRACT INFORMATION FROM WHAT THE CALLER SAYS:
+RULE 1 — CASE LOOKUP:
+- When a caller mentions any identifier that looks like an NRIC or case reference, call lookup_offender_case IMMEDIATELY.
+- Do NOT validate NRIC format. Do NOT ask them to double-check. Just look it up.
+- Pass the identifier exactly as the caller said it — the system handles fuzzy matching.
+- If the lookup returns not found, tell the caller simply and ask if they have a different reference.
+
+RULE 2 — EXTRACT INFORMATION FROM WHAT THE CALLER SAYS:
 - Read every message carefully for name, phone number, email, and callback preference.
-- If the caller says "I am Sarah" or "My name is Sarah" or "This is Sarah" — their name is Sarah. Use it immediately.
-- If the caller says "I am Sarah, I want a callback" — you already have their name. Do NOT ask for it again.
-- If the caller gives name and phone number in one message — call log_callback_case immediately without asking anything else.
+- If the caller says "I am Sarah" or "My name is Sarah" — their name is Sarah. Use it immediately.
+- If the caller gives name and phone number in one message — call log_callback_case immediately.
 - NEVER ask for information the caller has already provided in this conversation.
 
-RULE 2 — CALLBACK CASE COLLECTION SEQUENCE:
-- Step 1: You need the caller's name. Check if they already gave it. If yes, skip to Step 2.
-- Step 2: You need their contact number. Ask for it if not given.
-- Step 3: Once you have name AND contact number — call log_callback_case IMMEDIATELY. Do not ask for email or callback time unless the caller volunteers it.
-- The query field should be a summary of what the caller told you they need help with.
+RULE 3 — CALLBACK CASE COLLECTION:
+- Step 1: Check if name was already given. If yes, skip to Step 2.
+- Step 2: Ask for contact number if not yet provided.
+- Step 3: Once you have name AND contact — call log_callback_case IMMEDIATELY.
+- Do not ask for email or callback time unless the caller offers it.
 
-RULE 3 — CONVERSATION CONTINUITY:
+RULE 4 — CONVERSATION CONTINUITY:
 - This is a continuous conversation. You have full memory of everything said.
 - NEVER re-introduce yourself after the first message.
 - NEVER say Hello or How can I help after the first turn.
-- Vary your responses — never repeat the same phrasing.
 
-RULE 4 — VOICE FORMATTING:
+RULE 5 — VOICE FORMATTING:
 - No markdown. No asterisks, bold, bullets, or symbols. Plain spoken sentences only.
 - Keep responses to 2 sentences maximum per turn.
-- After completing an action, confirm it briefly and stop. Do not add unnecessary follow-up questions.
+- After completing an action, confirm it briefly and stop.
 
-RULE 5 — INFORMATION SEARCH:
-- Always call search_vaping_info before answering vaping law or health questions.
-- Never answer from memory alone on regulatory matters.`;
+RULE 6 — INFORMATION SEARCH:
+- Always call search_vaping_info before answering vaping law or health questions.`;
 
     const messages: Anthropic.MessageParam[] = [
       ...(conversationHistory as Anthropic.MessageParam[]),

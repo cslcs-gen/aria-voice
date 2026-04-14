@@ -179,17 +179,34 @@ function ChatBubbles({ history }: { history: Array<{ role: "user" | "aria"; text
 function TextInput({ onSend, status }: { onSend: (text: string) => void; status: AgentStatus }) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const isProcessing = status === "thinking" || status === "speaking";
+  const isBusy = status === "thinking" || status === "speaking";
   const handleSend = () => { if (!value.trim()) return; onSend(value.trim()); setValue(""); inputRef.current?.focus(); };
   return (
     <div className="w-full flex gap-2">
       <div className="flex-1 relative">
-        <input ref={inputRef} type="text" value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()}
+        {/* text-slate-900 ensures typed text is always dark/visible regardless of theme */}
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleSend()}
           placeholder="Type your question and press Enter..."
-          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-9" />
-        {isProcessing && <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}
+          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-9"
+          style={{ color: "#1e293b" /* force dark text — overrides any inherited white */ }}
+        />
+        {isBusy && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
       </div>
-      <button onClick={handleSend} disabled={!value.trim()} className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-blue-800 text-white rounded-xl font-semibold text-sm hover:bg-blue-900 transition-colors disabled:opacity-40 shadow flex-shrink-0">
+      {/* Send button always enabled — text input works even while ARIA is speaking */}
+      <button
+        onClick={handleSend}
+        disabled={!value.trim()}
+        className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-blue-800 text-white rounded-xl font-semibold text-sm hover:bg-blue-900 transition-colors disabled:opacity-40 shadow flex-shrink-0"
+      >
         <Send size={14} />
       </button>
     </div>
@@ -490,10 +507,11 @@ function OffenderPage({ lookedUpCases, onTextSend, status, chatHistory }: {
           <div className="flex gap-2 mb-4">
             <input type="text" value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()}
               placeholder="Enter NRIC (e.g. S8712123A) or case ref (e.g. OFC-2024-0891)"
-              className="flex-1 px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button onClick={handleSearch} disabled={isProcessing || !search.trim()}
+              className="flex-1 px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ color: "#1e293b" }} />
+            <button onClick={handleSearch} disabled={!search.trim()}
               className="px-4 py-2.5 bg-blue-800 text-white rounded-xl font-semibold text-sm hover:bg-blue-900 disabled:opacity-40 shadow">
-              {isProcessing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Search size={15} />}
+              <Search size={15} />
             </button>
           </div>
           <div className="border-t border-slate-100 pt-4">
