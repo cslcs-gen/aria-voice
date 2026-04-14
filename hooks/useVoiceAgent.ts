@@ -241,16 +241,11 @@ export function useVoiceAgent() {
     r.onend = () => {
       listeningRef.current = false;
       srRef.current = null;
-      // Safety net: always reopen if session active and nothing else running
-      setTimeout(() => {
-        if (activeRef.current && !listeningRef.current && !processingRef.current) {
-          openMicRef.current();
-        }
-      }, 400);
     };
 
     srRef.current = r;
     try { r.start(); } catch { listeningRef.current = false; setTimeout(() => openMicRef.current(), 500); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addLog]);
 
   // Keep openMicRef always pointing to latest openMicFn
@@ -319,8 +314,25 @@ export function useVoiceAgent() {
       const next = queueRef.current.shift()!;
       setTimeout(() => processInputRef.current(next), 200);
     } else if (activeRef.current) {
-      // Open mic after TTS ends — read from ref so always current
-      setTimeout(() => openMicRef.current(), 600);
+      // Poll every 300ms up to 3 seconds to open mic after TTS ends
+      // This is belt-and-suspenders: ensures mic opens even if first attempt is blocked
+      let attempts = 0;
+      const tryOpen = () => {
+        attempts++;
+        if (!activeRef.current) return; // session ended
+        if (listeningRef.current) return; // already listening
+        if (processingRef.current) return; // new request came in
+        if (attempts > 10) return; // give up after 3s
+        openMicRef.current();
+        // If openMic succeeded, listeningRef will be true shortly
+        // If not (e.g. SR busy), try again
+        setTimeout(() => {
+          if (activeRef.current && !listeningRef.current && !processingRef.current) {
+            tryOpen();
+          }
+        }, 300);
+      };
+      setTimeout(tryOpen, 500);
     } else {
       setStatus("idle");
     }
