@@ -85,7 +85,8 @@ export function useVoiceAgent() {
     { id: uid(), timestamp: ts(), type: "system", message: "Knowledge base: Singapore HSA & NEA vaping regulations 2024." },
     { id: uid(), timestamp: ts(), type: "system", message: "You can use voice or type your questions at any time." },
   ]);
-  const [cases, setCases] = useState<VapingCase[]>([]);
+  const [callbackCases, setCallbackCases] = useState<VapingCase[]>([]);
+  const [lookedUpCases, setLookedUpCases] = useState<OffenderCase[]>([]);
   const [transcript, setTranscript] = useState("");
   const [lastResponse, setLastResponse] = useState("");
   const [chatHistory, setChatHistory] = useState<Array<{ role: "user" | "aria"; text: string }>>([]);
@@ -200,11 +201,19 @@ export function useVoiceAgent() {
       }
 
       if (data.newCases?.length) {
-        setCases(prev => [...prev, ...data.newCases]);
+        setCallbackCases(prev => [...prev, ...data.newCases]);
         for (const c of data.newCases as VapingCase[]) {
           addLog("result", `[CASE] ${c.id} logged for ${c.name}`);
         }
       }
+
+	if (data.offenderResults?.length) {
+  	setLookedUpCases(prev => {
+   	 const existing = new Set(prev.map(c => c.caseRef));
+   	 const newOnes = (data.offenderResults as OffenderCase[]).filter(c => !existing.has(c.caseRef));
+   	 return [...prev, ...newOnes];
+  	});
+	}
 
       // Update history ref immediately
       if (data.updatedHistory && Array.isArray(data.updatedHistory)) {
@@ -325,9 +334,9 @@ export function useVoiceAgent() {
     addLog("system", "[RESET] Conversation cleared. Ready for new session.");
   }, [addLog]);
 
-  return {
-    status, consoleLog, cases, transcript, lastResponse, chatHistory,
-    startSession, stopSession, clearLogs, resetConversation, sendTextQuery,
-    isActive: activeVoiceRef,
-  };
+	return {
+ 	 status, consoleLog, callbackCases, lookedUpCases, chatHistory,
+ 	 startSession, stopSession, clearLogs, resetConversation, sendTextQuery,
+	  isActive: activeVoiceRef,
+	};
 }
