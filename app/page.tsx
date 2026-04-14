@@ -673,6 +673,15 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
   onTextSend: (text: string) => void; lang: Language; onLangChange: (l: Language) => void;
 }) {
   const [mobileTab, setMobileTab] = useState<"chat"|"console"|"cases">("chat");
+  const [voiceSupported, setVoiceSupported] = useState<boolean | null>(null);
+
+  // Detect voice support on mount
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const supported = !!(w.SpeechRecognition || w.webkitSpeechRecognition);
+    setVoiceSupported(supported);
+  }, []);
 
   const isZh = lang === "zh";
   const hints = isZh
@@ -705,7 +714,11 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={onToggleSession} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg font-semibold text-xs transition-all ${sessionActive ? "bg-red-50 border border-red-200 text-red-700" : "bg-blue-800 text-white hover:bg-blue-900"}`}>
+            <button
+              onClick={onToggleSession}
+              disabled={voiceSupported === false}
+              title={voiceSupported === false ? "Voice input requires Chrome or Edge" : undefined}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg font-semibold text-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed ${sessionActive ? "bg-red-50 border border-red-200 text-red-700" : "bg-blue-800 text-white hover:bg-blue-900"}`}>
               {sessionActive
                 ? <><MicOff size={13} />{isZh ? "结束会话" : "End Voice"}</>
                 : <><Mic size={13} />{isZh ? "开始语音会话" : "Start Voice"}</>}
@@ -747,6 +760,36 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+      {/* Browser compatibility warning — shown on Safari and Firefox */}
+      {voiceSupported === false && (
+        <div className="mb-5 flex items-start gap-3 p-4 bg-amber-50 border border-amber-300 rounded-xl">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-amber-900 text-sm">
+              Voice input is not supported on this browser
+            </p>
+            <p className="text-amber-700 text-xs mt-1">
+              Voice features require <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>.
+              Safari and Firefox do not support the Web Speech API.
+            </p>
+            <div className="flex gap-3 mt-3">
+              <a href="https://www.google.com/chrome/" target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition-colors">
+                Download Chrome
+              </a>
+              <a href="https://www.microsoft.com/edge" target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-lg text-xs font-semibold hover:bg-amber-50 transition-colors">
+                Download Edge
+              </a>
+            </div>
+            <p className="text-amber-600 text-xs mt-2">
+              You can still use the <strong>text input</strong> below to ask ARIA questions on any browser.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="mb-5">
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium mb-2"><ShieldCheck className="w-3.5 h-3.5" /> Singapore Vaping Information Helpline</div>
         <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Ask ARIA</h1>
