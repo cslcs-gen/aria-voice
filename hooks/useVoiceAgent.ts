@@ -451,37 +451,53 @@ export function useVoiceAgent() {
     addLog("speak", `[ARIA] ${greeting}`);
     setStatus("speaking");
 
-    // PRE-WARM: Briefly start SR within the user gesture to establish permission,
-    // then immediately stop it. This registers the mic with Chrome's audio system.
-    // After greeting finishes, SR can restart cleanly without needing user gesture again.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = window as any;
-    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (SR) {
-      try {
-        const warmup = new SR();
-        warmup.lang = lang === "zh" ? "zh-CN"
-                    : lang === "ms" ? "ms-MY"
-                    : lang === "ta" ? "ta-IN"
-                    : "en-US";
-        warmup.onend = () => {}; // suppress any events
-        warmup.onerror = () => {};
-        warmup.onresult = () => {};
-        warmup.start();
-        // Stop after 100ms — just enough to register mic permission with Chrome
-        setTimeout(() => { try { warmup.stop(); } catch {/**/} }, 100);
-      } catch {/**/}
+    // Detect mobile Chrome — pre-warm breaks audio pipeline on Android
+    const ua = navigator.userAgent;
+    const isAndroid    = ua.includes("Android");
+    const isIOS        = /iPad|iPhone|iPod/.test(ua);
+    const isMobileChr  = ua.includes("Chrome") && !ua.includes("Edg/") && (isAndroid || isIOS);
+
+    if (!isMobileChr) {
+      // DESKTOP: PRE-WARM SR within user gesture to establish mic permission
+      // This lets SR restart after async TTS without losing user gesture context
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any;
+      const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+      if (SR) {
+        try {
+          const warmup = new SR();
+          warmup.lang = lang === "zh" ? "zh-CN"
+                      : lang === "ms" ? "ms-MY"
+                      : lang === "ta" ? "ta-IN"
+                      : "en-US";
+          warmup.onend = () => {};
+          warmup.onerror = () => {};
+          warmup.onresult = () => {};
+          warmup.start();
+          setTimeout(() => { try { warmup.stop(); } catch {/**/} }, 100);
+        } catch {/**/}
+      }
     }
 
-    // Play greeting, then open mic properly after it finishes
+    // Play greeting then open mic
+    // On mobile Chrome: open mic immediately after greeting (no pre-warm delay needed)
     speak(greeting).then(() => {
       setTimeout(() => {
         if (activeRef.current && !processingRef.current && !listeningRef.current) {
           speakingRef.current = false;
           openMicRef.current();
         }
-      }, 400);
+      }, isMobileChr ? 200 : 400); // shorter delay on mobile
     });
+
+    // Safety net: open mic after 6s regardless (covers slow TTS on any device)
+    setTimeout(() => {
+      if (activeRef.current && !processingRef.current && !listeningRef.current) {
+        speakingRef.current = false;
+        openMicRef.current();
+      }
+    }, 6000);
+
   },[addLog, addChat, speak]);
 
   // ── stopSession ──────────────────────────────────────────────────────────
