@@ -675,35 +675,66 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
   const [mobileTab, setMobileTab] = useState<"chat"|"console"|"cases">("chat");
   const [voiceSupported, setVoiceSupported] = useState<boolean | null>(null);
   const [browserName, setBrowserName] = useState<string>("");
+  const [isMobileChrome, setIsMobileChrome] = useState(false);
 
-  // Detect voice support on mount — checks both API existence and browser
   useEffect(() => {
     const ua = navigator.userAgent;
-    // Detect Safari (but not Chrome on iOS which also has Safari UA)
-    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-    const isFirefox = ua.includes("Firefox");
-    const isChrome = ua.includes("Chrome") && !ua.includes("Edg");
-    const isEdge = ua.includes("Edg");
 
-    if (isSafari) setBrowserName("Safari");
-    else if (isFirefox) setBrowserName("Firefox");
-    else if (isChrome) setBrowserName("Chrome");
-    else if (isEdge) setBrowserName("Edge");
-    else setBrowserName("your browser");
+    // Detect specific browsers
+    const isSafari     = /^((?!chrome|android).)*safari/i.test(ua);
+    const isFirefox    = ua.includes("Firefox");
+    const isEdge       = ua.includes("Edg/");
+    const isSamsung    = ua.includes("SamsungBrowser");
+    const isUCBrowser  = ua.includes("UCBrowser");
+    const isOpera      = ua.includes("OPR/") || ua.includes("Opera");
+    const isAndroid    = ua.includes("Android");
+    const isIOS        = /iPad|iPhone|iPod/.test(ua);
+    const isChromeCore = ua.includes("Chrome") && !isEdge && !isSamsung && !isOpera;
+    const isMobileChr  = isChromeCore && (isAndroid || isIOS);
+    const isDesktopChr = isChromeCore && !isAndroid && !isIOS;
+
+    // Set browser name for the banner message
+    if (isSamsung)       setBrowserName("Samsung Browser");
+    else if (isUCBrowser) setBrowserName("UC Browser");
+    else if (isOpera)    setBrowserName("Opera");
+    else if (isFirefox)  setBrowserName("Firefox");
+    else if (isSafari)   setBrowserName("Safari");
+    else if (isMobileChr) setBrowserName("Chrome on Mobile");
+    else if (isDesktopChr) setBrowserName("Chrome");
+    else if (isEdge)     setBrowserName("Edge");
+    else                 setBrowserName("your browser");
+
+    setIsMobileChrome(isMobileChr);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const hasAPI = !!(w.SpeechRecognition || w.webkitSpeechRecognition);
 
-    // Safari has webkitSpeechRecognition but it silently fails — treat as unsupported
-    const supported = hasAPI && !isSafari && !isFirefox;
+    // Unsupported: Safari, Firefox, Samsung, UC, Opera, iOS Chrome
+    // Mobile Android Chrome: has API but unreliable — show warning but allow try
+    const unsupported = isSafari || isFirefox || isSamsung || isUCBrowser || isOpera || isIOS;
+    const supported   = hasAPI && !unsupported;
     setVoiceSupported(supported);
   }, []);
 
   const isZh = lang === "zh";
-  const hints = isZh
-    ? ["新加坡电子烟罚款是多少？","IQOS在新加坡合法吗？","我怎么举报售卖电子烟的商店？","吸电子烟有什么健康风险？","我需要执法人员回电"]
-    : ["What are the penalties for vaping in Singapore?","Is IQOS legal here?","How do I report a shop selling e-cigarettes?","What health risks does vaping cause?","I need an officer to call me back"];
+  const isMs = lang === "ms";
+  const isTa = lang === "ta";
+
+  const hints =
+    isZh ? ["新加坡电子烟罚款是多少？","IQOS在新加坡合法吗？","我怎么举报售卖电子烟的商店？","吸电子烟有什么健康风险？","我需要执法人员回电"] :
+    isMs ? ["Apakah hukuman vaping di Singapura?","Adakah IQOS sah di sini?","Bagaimana saya melaporkan kedai yang menjual vape?","Apakah risiko kesihatan vaping?","Saya perlukan pegawai menghubungi saya"] :
+    isTa ? ["சிங்கப்பூரில் வேப்பிங் தண்டனை என்ன?","IQOS சட்டப்பூர்வமானதா?","வேப் விற்கும் கடையை எப்படி புகாரளிக்கலாம்?","வேப்பிங்கின் உடல்நல அபாயங்கள் என்ன?","அதிகாரி என்னை திரும்ப அழைக்க வேண்டும்"] :
+    ["What are the penalties for vaping in Singapore?","Is IQOS legal here?","How do I report a shop selling e-cigarettes?","What health risks does vaping cause?","I need an officer to call me back"];
+
+  const voiceLabel    = isZh ? "开始语音会话" : isMs ? "Mulakan Sesi Suara" : isTa ? "குரல் அமர்வு தொடங்கு" : "Start Voice";
+  const endLabel      = isZh ? "结束会话"     : isMs ? "Tamatkan Sesi"      : isTa ? "அமர்வை முடி"         : "End Voice";
+  const resetLabel    = isZh ? "重置对话"     : isMs ? "Tetapkan Semula"    : isTa ? "மீட்டமை"             : "Reset conversation";
+  const typeLabel     = isZh ? "输入您的问题：" : isMs ? "Taip soalan anda:" : isTa ? "உங்கள் கேள்வியை தட்டச்சு செய்யுங்கள்:" : "Type your question:";
+  const placeholder   = isZh ? "输入问题后按回车键发送..." : isMs ? "Taip soalan dan tekan Enter..." : isTa ? "கேள்வியை தட்டச்சு செய்து Enter அழுத்துங்கள்..." : undefined;
+  const statusLabel   = sessionActive
+    ? (isZh ? "语音会话进行中 — 请说话或输入文字" : isMs ? "Sesi suara aktif — sila bercakap atau taip" : isTa ? "குரல் அமர்வு செயலில் உள்ளது — பேசுங்கள் அல்லது தட்டச்சு செய்யுங்கள்" : "Voice session active — speak now or type below")
+    : (isZh ? "开始语音会话或输入问题"            : isMs ? "Mulakan sesi suara atau taip soalan"         : isTa ? "குரல் அமர்வை தொடங்குங்கள் அல்லது கேள்வியை தட்டச்சு செய்யுங்கள்"   : "Start voice session or type below");
 
   const ChatPanel = () => (
     <div className="flex flex-col gap-3 w-full">
@@ -711,11 +742,7 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
         <VoiceAura status={status} />
         <div className="flex-1 space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500 font-medium">
-              {isZh
-                ? (sessionActive ? "语音会话进行中 — 请说话或输入文字" : "开始语音会话或输入问题")
-                : (sessionActive ? "Voice session active — speak now or type below" : "Start voice session or type below")}
-            </p>
+            <p className="text-xs text-slate-500 font-medium">{statusLabel}</p>
             {/* Language toggle — disabled during active session */}
             <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 shrink-0">
               {([
@@ -739,10 +766,10 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
               title={voiceSupported === false ? "Voice input requires Chrome or Edge" : undefined}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg font-semibold text-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed ${sessionActive ? "bg-red-50 border border-red-200 text-red-700" : "bg-blue-800 text-white hover:bg-blue-900"}`}>
               {sessionActive
-                ? <><MicOff size={13} />{isZh ? "结束会话" : "End Voice"}</>
-                : <><Mic size={13} />{isZh ? "开始语音会话" : "Start Voice"}</>}
+                ? <><MicOff size={13} />{endLabel}</>
+                : <><Mic size={13} />{voiceLabel}</>}
             </button>
-            <button onClick={onReset} title={isZh ? "重置对话" : "Reset conversation"} className="p-2 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"><RotateCcw size={13} /></button>
+            <button onClick={onReset} title={resetLabel} className="p-2 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"><RotateCcw size={13} /></button>
           </div>
         </div>
       </div>
@@ -756,7 +783,7 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
           ))}
         </div>
       )}
-      <div><p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1.5">{isZh ? "输入您的问题：" : "Type your question:"}</p><TextInput onSend={onTextSend} status={status} placeholder={isZh ? "输入问题后按回车键发送..." : undefined} /></div>
+      <div><p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1.5">{typeLabel}</p><TextInput onSend={onTextSend} status={status} placeholder={placeholder} /></div>
       <div className="grid grid-cols-3 gap-2">
         {[{ icon:<CheckCircle2 size={11} className="text-emerald-500"/>,label:"Resolved",value:callbackCases.filter(c=>c.status==="resolved").length,color:"text-emerald-700"},
           { icon:<Clock size={11} className="text-amber-500"/>,label:"Open",value:callbackCases.filter(c=>c.status==="open").length,color:"text-amber-700"},
@@ -780,7 +807,7 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
-      {/* Browser compatibility warning — shown on Safari and Firefox */}
+      {/* Unsupported browser — hard block with download links */}
       {voiceSupported === false && (
         <div className="mb-5 flex items-start gap-3 p-4 bg-amber-50 border border-amber-300 rounded-xl">
           <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -789,8 +816,7 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
               Voice input is not supported on {browserName}
             </p>
             <p className="text-amber-700 text-xs mt-1">
-              Voice features require <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>.
-              {browserName === "Safari" ? " Safari does not support the Web Speech API." : ` ${browserName} does not support the Web Speech API.`}
+              Voice features require <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on a desktop or laptop computer.
             </p>
             <div className="flex gap-3 mt-3">
               <a href="https://www.google.com/chrome/" target="_blank" rel="noopener noreferrer"
@@ -803,7 +829,23 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
               </a>
             </div>
             <p className="text-amber-600 text-xs mt-2">
-              You can still <strong>type your questions</strong> below — all ARIA features work via text input.
+              You can still <strong>type your questions</strong> below — all ARIA features work via text on any browser.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Chrome — supported but with limitations notice */}
+      {voiceSupported !== false && isMobileChrome && (
+        <div className="mb-5 flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+          <AlertCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-blue-800 text-sm">
+              Voice input on mobile may be limited
+            </p>
+            <p className="text-blue-700 text-xs mt-1">
+              For the best voice experience, use <strong>Chrome on a desktop or laptop</strong>.
+              On mobile, you can still <strong>type your questions</strong> below for full functionality.
             </p>
           </div>
         </div>
