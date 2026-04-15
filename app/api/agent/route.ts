@@ -1,12 +1,12 @@
-// app/api/agent/route.ts — ARIA v4.1
-// Fix: extract name/contact from opening message, never re-ask for given info
+// app/api/agent/route.ts — ARIA v5.1 with Redis persistence
 
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  vapingCases, generateCaseId, VAPING_KNOWLEDGE,
-  offenderCases, type VapingCase, type OffenderCase,
+  offenderCases, VAPING_KNOWLEDGE,
+  type OffenderCase,
 } from "@/lib/vaping-systems";
+import { saveCase, type StoredCase } from "@/lib/redis";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -19,11 +19,19 @@ function stripMarkdown(text: string): string {
     .replace(/>\s+/g, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function generateCaseId(): string {
+  const d = new Date();
+  const ds = d.getFullYear().toString() +
+    String(d.getMonth() + 1).padStart(2, "0") +
+    String(d.getDate()).padStart(2, "0");
+  return `VPG-${ds}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+}
+
 // ── Tools ─────────────────────────────────────────────────────────────────────
 const tools: Anthropic.Tool[] = [
   {
     name: "search_vaping_info",
-    description: "Search Singapore vaping knowledge base for laws, health effects, penalties, business rules, and reporting guidance. Always call before answering vaping questions.",
+    description: "Search Singapore vaping knowledge base. Always call before answering vaping questions.",
     input_schema: {
       type: "object",
       properties: {
@@ -39,22 +47,22 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        identifier: { type: "string", description: "NRIC (e.g. S8712123A) or case reference (e.g. OFC-2024-0891)" },
+        identifier: { type: "string" },
       },
       required: ["identifier"],
     },
   },
   {
     name: "log_callback_case",
-    description: "Log a callback case for officer follow-up. Call this as soon as you have the caller's name AND contact number — do not wait for more information. The query field should summarise what the caller needs based on the full conversation.",
+    description: "Log a callback case. Call immediately when you have name AND contact number.",
     input_schema: {
       type: "object",
       properties: {
-        name:         { type: "string", description: "Caller's full name" },
-        contact:      { type: "string", description: "Caller's phone number" },
-        email:        { type: "string", description: "Email address (optional)" },
-        query:        { type: "string", description: "Summary of what the caller needs help with" },
-        callbackTime: { type: "string", description: "Preferred callback time (optional)" },
+        name:         { type: "string" },
+        contact:      { type: "string" },
+        email:        { type: "string" },
+        query:        { type: "string" },
+        callbackTime: { type: "string" },
       },
       required: ["name","contact","query"],
     },
@@ -82,24 +90,13 @@ function handle_search(query: string, category: string): string {
   };
   const regex = sectionMap[category];
   const match = regex ? kb.match(regex) : null;
-  return JSON.stringify({
-    success: true, query,
-    information: (match ? match[0] : kb).trim(),
-    source: "Singapore HSA & NEA 2024",
-  });
+  return JSON.stringify({ success: true, query, information: (match ? match[0] : kb).trim(), source: "Singapore HSA & NEA 2024" });
 }
 
 function handle_lookup_offender(identifier: string): string {
-  // Clean input: remove spaces, dashes, make uppercase
   const id = identifier.trim().toUpperCase().replace(/[\s\-\.]/g, "");
-
-  // Try exact NRIC match
   let found = offenderCases.find(c => c.nricFull.toUpperCase() === id);
-
-  // Try exact case reference match
   if (!found) found = offenderCases.find(c => c.caseRef.toUpperCase() === id);
-
-  // Try partial match — voice may transcribe "S8712123A" as "S 8712123 A" etc
   if (!found) {
     found = offenderCases.find(c => {
       const nric = c.nricFull.toUpperCase().replace(/[\s\-]/g, "");
@@ -107,19 +104,16 @@ function handle_lookup_offender(identifier: string): string {
       return nric === id || ref === id || nric.includes(id) || ref.includes(id) || id.includes(nric) || id.includes(ref);
     });
   }
-
-  // Try matching just the numeric portion (7 digits) in case letters were dropped
   if (!found) {
     const digitsOnly = id.replace(/[^0-9]/g, "");
     if (digitsOnly.length >= 5) {
       found = offenderCases.find(c => c.nricFull.replace(/[^0-9]/g, "") === digitsOnly);
     }
   }
-
   if (!found) {
     return JSON.stringify({
       success: false,
-      error: `No case found for the identifier "${identifier}". Please verify the NRIC or case reference. Demo NRICs: S8712123A, T9234890B, S7845456C, G9912789D. Demo case ref: OFC-2023-0445.`,
+      error: `No case found for "${identifier}". Demo NRICs: S8712123A, T9234890B, S7845456C, G9912789D.`,
     });
   }
   const penaltyParts: string[] = [];
@@ -134,28 +128,46 @@ function handle_lookup_offender(identifier: string): string {
   });
 }
 
-function handle_log_case(name: string, contact: string, query: string, email?: string, callbackTime?: string): { json: string; case: VapingCase } {
-  const newCase: VapingCase = {
+async function handle_log_case(
+  name: string, contact: string, query: string,
+  email?: string, callbackTime?: string
+): Promise<{ json: string; case: StoredCase }> {
+  const newCase: StoredCase = {
     id: generateCaseId(), name, contact, email, query,
     callbackTime: callbackTime ?? "Any time",
     status: "open",
     createdAt: new Date().toISOString(),
     notes: "Logged via ARIA voice assistant. Awaiting officer assignment.",
   };
-  vapingCases.push(newCase);
+
+  // Persist to Redis — shared across all serverless instances
+  await saveCase(newCase);
+
+  // Send Telegram notification
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://aria-voice-seven.vercel.app";
+  fetch(`${appUrl}/api/telegram/notify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      caseId: newCase.id, name, contact, email, query, callbackTime,
+    }),
+  }).catch(err => console.error("[Telegram Notify Failed]", err));
+
   return {
     case: newCase,
     json: JSON.stringify({
       success: true, case: newCase,
-      message: `Case logged. Reference number is ${newCase.id}. An officer will contact ${name} at ${contact}${callbackTime ? ` during ${callbackTime}` : " at the earliest opportunity"}. Please save this reference number.`,
+      message: `Case logged. Reference number is ${newCase.id}. An officer has been notified via Telegram and will contact ${name} at ${contact}${callbackTime ? ` during ${callbackTime}` : " at the earliest opportunity"}. Please save your reference number.`,
     }),
   };
 }
 
-function handle_get_status(case_id: string): string {
-  const found = vapingCases.find(c => c.id.toLowerCase() === case_id.toLowerCase());
-  if (!found) return JSON.stringify({ success: false, error: `No callback case found with reference ${case_id}.` });
-  return JSON.stringify({ success: true, case: found, message: `Callback case ${found.id} for ${found.name} is ${found.status.replace("_"," ")}. Query: ${found.query}` });
+function handle_get_status_sync(case_id: string): string {
+  // Returns a pending message — actual lookup happens async via /api/cases
+  return JSON.stringify({
+    success: true,
+    message: `Please check the Callback Cases page for the latest status of case ${case_id}.`,
+  });
 }
 
 // ── POST ──────────────────────────────────────────────────────────────────────
@@ -172,44 +184,18 @@ YOUR CAPABILITIES:
 3. Log callback cases for callers who need officer assistance.
 
 LANGUAGE RULE — CRITICAL:
-- Detect the language of the caller's message.
-- If the caller writes or speaks in Chinese (Mandarin / 普通话), respond ENTIRELY in Simplified Chinese.
+- If the caller writes or speaks in Chinese, respond entirely in Simplified Chinese.
 - If the caller writes or speaks in English, respond entirely in English.
-- Never mix languages in a single response.
-- When responding in Chinese, all your words including confirmations and case details must be in Chinese.
+- Never mix languages.
 
-ABSOLUTE RULES — MUST FOLLOW EXACTLY:
-
-RULE 1 — CASE LOOKUP:
-- When a caller mentions any identifier that looks like an NRIC or case reference, call lookup_offender_case IMMEDIATELY.
-- Do NOT validate NRIC format. Do NOT ask them to double-check. Just look it up.
-- Pass the identifier exactly as the caller said it — the system handles fuzzy matching.
-- If the lookup returns not found, tell the caller simply and ask if they have a different reference.
-
-RULE 2 — EXTRACT INFORMATION FROM WHAT THE CALLER SAYS:
-- Read every message carefully for name, phone number, email, and callback preference.
-- If the caller says "I am Sarah" or "我叫Sarah" — their name is Sarah. Use it immediately.
-- If the caller gives name and phone number in one message — call log_callback_case immediately.
-- NEVER ask for information the caller has already provided in this conversation.
-
-RULE 3 — CALLBACK CASE COLLECTION:
-- Step 1: Check if name was already given. If yes, skip to Step 2.
-- Step 2: Ask for contact number if not yet provided.
-- Step 3: Once you have name AND contact — call log_callback_case IMMEDIATELY.
-- Do not ask for email or callback time unless the caller offers it.
-
-RULE 4 — CONVERSATION CONTINUITY:
-- This is a continuous conversation. You have full memory of everything said.
-- NEVER re-introduce yourself after the first message.
-- NEVER say Hello or How can I help after the first turn.
-
-RULE 5 — VOICE FORMATTING:
-- No markdown. No asterisks, bold, bullets, or symbols. Plain spoken sentences only.
-- Keep responses to 2 sentences maximum per turn.
-- After completing an action, confirm it briefly and stop.
-
-RULE 6 — INFORMATION SEARCH:
-- Always call search_vaping_info before answering vaping law or health questions.`;
+ABSOLUTE RULES:
+1. Case lookup: when caller mentions NRIC or case ref, call lookup_offender_case immediately. Do not validate format.
+2. Extract info: if caller says "I am Sarah", name is Sarah — use it, do not ask again.
+3. Callback collection: ask name → contact → log immediately. Do not ask for email unless offered.
+4. Never re-introduce yourself after the first message.
+5. No markdown. Plain spoken sentences only. Max 2 sentences per turn.
+6. Always search before answering vaping questions.
+7. After logging a case, tell the caller their reference number and that an officer has been notified.`;
 
     const messages: Anthropic.MessageParam[] = [
       ...(conversationHistory as Anthropic.MessageParam[]),
@@ -217,7 +203,7 @@ RULE 6 — INFORMATION SEARCH:
     ];
 
     const actionLog: Array<{ tool: string; input: object; output: object }> = [];
-    const newCases: VapingCase[] = [];
+    const newCases: StoredCase[] = [];
     const offenderResults: OffenderCase[] = [];
     let finalResponse = "";
     let iterations = 0;
@@ -226,10 +212,8 @@ RULE 6 — INFORMATION SEARCH:
       iterations++;
       const response = await anthropic.messages.create({
         model: "claude-opus-4-5",
-        max_tokens: 250, // Short responses — voice assistant, not a chatbot
-        system,
-        tools,
-        messages,
+        max_tokens: 250,
+        system, tools, messages,
       });
 
       if (response.stop_reason === "end_turn") {
@@ -259,7 +243,7 @@ RULE 6 — INFORMATION SEARCH:
             if (parsed.success && parsed.case) offenderResults.push(parsed.case);
 
           } else if (block.name === "log_callback_case") {
-            const { case: logged, json } = handle_log_case(
+            const { case: logged, json } = await handle_log_case(
               input.name as string, input.contact as string, input.query as string,
               input.email as string | undefined, input.callbackTime as string | undefined
             );
@@ -267,23 +251,8 @@ RULE 6 — INFORMATION SEARCH:
             actionLog.push({ tool: block.name, input, output: JSON.parse(json) });
             resultJson = json;
 
-            // Fire-and-forget Telegram notification to officer
-            const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://aria-voice-seven.vercel.app";
-            fetch(`${appUrl}/api/telegram/notify`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                caseId:       logged.id,
-                name:         logged.name,
-                contact:      logged.contact,
-                email:        logged.email,
-                query:        logged.query,
-                callbackTime: logged.callbackTime,
-              }),
-            }).catch(err => console.error("[Telegram Notify Failed]", err));
-
           } else if (block.name === "get_case_status") {
-            resultJson = handle_get_status(input.case_id as string);
+            resultJson = handle_get_status_sync(input.case_id as string);
             actionLog.push({ tool: block.name, input, output: JSON.parse(resultJson) });
 
           } else {

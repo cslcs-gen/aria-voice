@@ -1,15 +1,19 @@
 // app/api/cases/route.ts
-// Returns all callback cases — used by frontend to poll for Telegram-resolved cases
-
 import { NextResponse } from "next/server";
-import { vapingCases } from "@/lib/vaping-systems";
+import { getAllCases } from "@/lib/redis";
 
 export async function GET() {
-  return NextResponse.json({
-    success: true,
-    cases: vapingCases,
-    total: vapingCases.length,
-    open: vapingCases.filter(c => c.status !== "resolved").length,
-    resolved: vapingCases.filter(c => c.status === "resolved").length,
-  });
+  try {
+    const cases = await getAllCases();
+    return NextResponse.json({
+      success: true,
+      cases,
+      total:    cases.length,
+      open:     cases.filter(c => c.status !== "resolved").length,
+      resolved: cases.filter(c => c.status === "resolved").length,
+    });
+  } catch (err) {
+    console.error("[Cases API Error]", err);
+    return NextResponse.json({ success: false, cases: [], total: 0, open: 0, resolved: 0 });
+  }
 }
