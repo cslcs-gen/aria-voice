@@ -267,6 +267,21 @@ RULE 6 — INFORMATION SEARCH:
             actionLog.push({ tool: block.name, input, output: JSON.parse(json) });
             resultJson = json;
 
+            // Fire-and-forget Telegram notification to officer
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://aria-voice-seven.vercel.app";
+            fetch(`${appUrl}/api/telegram/notify`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                caseId:       logged.id,
+                name:         logged.name,
+                contact:      logged.contact,
+                email:        logged.email,
+                query:        logged.query,
+                callbackTime: logged.callbackTime,
+              }),
+            }).catch(err => console.error("[Telegram Notify Failed]", err));
+
           } else if (block.name === "get_case_status") {
             resultJson = handle_get_status(input.case_id as string);
             actionLog.push({ tool: block.name, input, output: JSON.parse(resultJson) });

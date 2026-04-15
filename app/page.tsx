@@ -847,29 +847,113 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
 
 // ── Track Page ────────────────────────────────────────────────────────────────
 function TrackPage({ cases }: { cases: VapingCase[] }) {
-  const [search, setSearch] = useState("");
-  const filtered = cases.filter(c => c.id.toLowerCase().includes(search.toLowerCase()) || c.name.toLowerCase().includes(search.toLowerCase()) || c.contact.includes(search));
+  const [search, setSearch]     = useState("");
+  const [caseList, setCaseList] = useState<VapingCase[]>(cases);
+  const pollRef = useRef<ReturnType<typeof setInterval>|null>(null);
+
+  // Sync when cases prop changes
+  useEffect(() => { setCaseList(cases); }, [cases]);
+
+  // Poll server every 10s to pick up officer-resolved cases (via Telegram webhook)
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/cases");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.cases)) setCaseList(data.cases);
+      } catch {/**/}
+    };
+    pollRef.current = setInterval(poll, 10_000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  const filtered = caseList.filter(c =>
+    c.id.toLowerCase().includes(search.toLowerCase()) ||
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    c.contact.includes(search)
+  );
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6"><h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-1">Callback Cases</h1><p className="text-slate-500 text-sm">Track cases logged by ARIA for officer follow-up</p></div>
-      <div className="relative mb-5"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" placeholder="Search by case ID, name, or contact..." value={search} onChange={e=>setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/></div>
+      <div className="mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-1">Callback Cases</h1>
+        <p className="text-slate-500 text-sm">
+          Track cases logged by ARIA. Cases resolved by officers via Telegram update automatically.
+        </p>
+      </div>
+
+      {/* Telegram integration notice */}
+      <div className="mb-5 flex items-center gap-2.5 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
+        <span className="text-lg">✈️</span>
+        <span>
+          <strong>Telegram Integration Active</strong> — Officers receive instant alerts and can reply
+          <code className="mx-1 bg-blue-100 px-1 py-0.5 rounded">/close VPG-xxx Notes here</code>
+          to resolve cases remotely.
+        </span>
+      </div>
+
+      <div className="relative mb-5">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+        <input type="text" placeholder="Search by case ID, name, or contact..."
+          value={search} onChange={e=>setSearch(e.target.value)}
+          className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={{color:"#1e293b"}}/>
+      </div>
+
       <div className="grid grid-cols-3 gap-4 mb-5">
-        {[{label:"Total",value:cases.length,color:"text-blue-700",bg:"bg-blue-50",border:"border-blue-200"},{label:"Open",value:cases.filter(c=>c.status==="open").length,color:"text-amber-700",bg:"bg-amber-50",border:"border-amber-200"},{label:"Resolved",value:cases.filter(c=>c.status==="resolved").length,color:"text-green-700",bg:"bg-green-50",border:"border-green-200"}].map(s=>(
-          <div key={s.label} className={`${s.bg} border ${s.border} rounded-xl p-4 text-center`}><p className={`text-2xl font-bold ${s.color}`}>{s.value}</p><p className="text-xs text-slate-500 uppercase tracking-wide mt-0.5">{s.label}</p></div>
+        {[
+          {label:"Total",    value:caseList.length,                                        color:"text-blue-700",  bg:"bg-blue-50",  border:"border-blue-200"},
+          {label:"Open",     value:caseList.filter(c=>c.status==="open").length,            color:"text-amber-700", bg:"bg-amber-50", border:"border-amber-200"},
+          {label:"Resolved", value:caseList.filter(c=>c.status==="resolved").length,        color:"text-green-700", bg:"bg-green-50", border:"border-green-200"},
+        ].map(s=>(
+          <div key={s.label} className={`${s.bg} border ${s.border} rounded-xl p-4 text-center`}>
+            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide mt-0.5">{s.label}</p>
+          </div>
         ))}
       </div>
-      {filtered.length===0?(<div className="flex flex-col items-center justify-center py-20 text-slate-400 text-center"><TrendingUp size={36} className="mb-3 opacity-30"/><p className="font-medium">{cases.length===0?"No cases logged yet":"No results found"}</p><p className="text-sm mt-1">{cases.length===0?"Ask ARIA to arrange a callback":"Try a different search term"}</p></div>):(
+
+      {filtered.length===0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400 text-center">
+          <TrendingUp size={36} className="mb-3 opacity-30"/>
+          <p className="font-medium">{caseList.length===0?"No cases logged yet":"No results found"}</p>
+          <p className="text-sm mt-1">{caseList.length===0?"Ask ARIA to arrange a callback":"Try a different search term"}</p>
+        </div>
+      ) : (
         <div className="space-y-4">
           {[...filtered].reverse().map(c=>(
-            <div key={c.id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4 mb-3"><div><div className="flex items-center gap-2 mb-1"><User size={13} className="text-slate-400"/><span className="font-semibold text-slate-800">{c.name}</span><span className="font-mono text-xs text-slate-400">{c.id}</span></div><p className="text-slate-600 text-sm">{c.query}</p></div><span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full uppercase ${CASE_STATUS_STYLE[c.status]}`}>{c.status.replace("_"," ")}</span></div>
+            <div key={c.id} className={`bg-white border rounded-xl p-5 shadow-sm transition-all ${c.status==="resolved" ? "border-green-300 bg-green-50/30" : "border-slate-200"}`}>
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <User size={13} className="text-slate-400"/>
+                    <span className="font-semibold text-slate-800">{c.name}</span>
+                    <span className="font-mono text-xs text-slate-400">{c.id}</span>
+                    {/* Telegram badge */}
+                    <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                      ✈️ Telegram
+                    </span>
+                    {c.status==="resolved" && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">
+                        ✅ Officer Closed
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-slate-600 text-sm">{c.query}</p>
+                </div>
+                <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full uppercase ${CASE_STATUS_STYLE[c.status]}`}>
+                  {c.status.replace("_"," ")}
+                </span>
+              </div>
               <div className="grid sm:grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-sm text-slate-600">
                 <div className="flex items-center gap-2"><Phone size={12} className="text-slate-400"/>{c.contact}</div>
                 {c.email&&<div className="flex items-center gap-2"><Mail size={12} className="text-slate-400"/>{c.email}</div>}
                 {c.callbackTime&&<div className="flex items-center gap-2"><Calendar size={12} className="text-slate-400"/>Callback: {c.callbackTime}</div>}
                 <div className="flex items-center gap-2"><Clock size={12} className="text-slate-400"/>{new Date(c.createdAt).toLocaleString()}</div>
+                {c.resolvedAt&&<div className="flex items-center gap-2 text-green-600"><CheckCircle2 size={12}/>Resolved: {new Date(c.resolvedAt).toLocaleString()}</div>}
               </div>
-              {c.notes&&<div className="mt-3 bg-slate-50 rounded-lg p-3 text-xs text-slate-500">{c.notes}</div>}
+              {c.notes&&<div className="mt-3 bg-white rounded-lg p-3 text-xs text-slate-600 border border-slate-200">{c.notes}</div>}
             </div>
           ))}
         </div>
