@@ -9,7 +9,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 
-export type Language    = "en" | "zh";
+export type Language    = "en" | "zh" | "ms" | "ta";
 export type AgentStatus = "idle" | "listening" | "thinking" | "speaking" | "error";
 
 export interface ConsoleEntry {
@@ -54,6 +54,7 @@ function stripMd(t: string): string {
 function ts()  { return new Date().toLocaleTimeString("en-US",{hour12:false}); }
 function uid() { return Math.random().toString(36).slice(2,9); }
 function isChinese(t: string) { return /[\u4e00-\u9fff]/.test(t); }
+function isTamil(t: string)   { return /[\u0B80-\u0BFF]/.test(t); } // Tamil Unicode block
 
 const NOISE = new Set([
   "","ok","okay","yes","no","hmm","um","uh","ah","oh","hey","hi",
@@ -118,6 +119,14 @@ export function useVoiceAgent() {
       const v = voices.find(v=>v.lang==="zh-CN") ?? voices.find(v=>v.lang.startsWith("zh"));
       if (v) u.voice = v;
       u.lang = "zh-CN";
+    } else if (lang === "ms") {
+      const v = voices.find(v=>v.lang==="ms-MY") ?? voices.find(v=>v.lang.startsWith("ms"));
+      if (v) u.voice = v;
+      u.lang = "ms-MY";
+    } else if (lang === "ta") {
+      const v = voices.find(v=>v.lang==="ta-IN") ?? voices.find(v=>v.lang.startsWith("ta"));
+      if (v) u.voice = v;
+      u.lang = "ta-IN";
     } else {
       const v = voices.find(v=>v.name.includes("Samantha")||v.lang==="en-US");
       if (v) u.voice = v;
@@ -130,13 +139,21 @@ export function useVoiceAgent() {
   // ── TTS: ElevenLabs for English, browser for Chinese ────────────────────
   const speak = useCallback(async (text:string):Promise<void> => {
     const clean = stripMd(text);
+    const currentLang = langRef.current;
     speakingRef.current = true;
     try {
-      if (isChinese(clean)) {
-        await speakBrowser(clean,"zh");
-        speakingRef.current = false;
-        return;
+      // Chinese, Malay, and Tamil always use browser TTS
+      // ElevenLabs English voice cannot pronounce these languages
+      if (isChinese(clean) || currentLang === "zh") {
+        await speakBrowser(clean, "zh"); speakingRef.current = false; return;
       }
+      if (isTamil(clean) || currentLang === "ta") {
+        await speakBrowser(clean, "ta"); speakingRef.current = false; return;
+      }
+      if (currentLang === "ms") {
+        await speakBrowser(clean, "ms"); speakingRef.current = false; return;
+      }
+      // English — use ElevenLabs if available
       const key = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
       if (!key) { await speakBrowser(clean); speakingRef.current = false; return; }
       try {
@@ -195,7 +212,10 @@ export function useVoiceAgent() {
     if (!SR) { addLog("error","[MIC] Use Chrome or Edge for voice support."); return; }
 
     const r = new SR();
-    r.lang          = langRef.current === "zh" ? "zh-CN" : "en-US";
+    r.lang = langRef.current === "zh" ? "zh-CN"
+           : langRef.current === "ms" ? "ms-MY"
+           : langRef.current === "ta" ? "ta-IN"
+           : "en-US";
     r.interimResults  = false;
     r.maxAlternatives = 1;
     r.continuous      = false;
@@ -418,11 +438,14 @@ export function useVoiceAgent() {
     historyRef.current    = [];
     lastSrEventRef.current = Date.now();
     setChatHistory([]);
-    addLog("system",`━━━━━━ VOICE SESSION STARTED [${lang==="zh"?"中文":"EN"}] ━━━━━━`);
+    const langLabel: Record<string,string> = { en:"EN", zh:"中文", ms:"BM", ta:"தமிழ்" };
+    addLog("system",`━━━━━━ VOICE SESSION STARTED [${langLabel[lang]??"EN"}] ━━━━━━`);
 
-    const greeting = lang === "zh"
-      ? "你好，我是ARIA，新加坡电子烟资讯助理。请问有什么可以帮助您？"
-      : "Hello! I'm ARIA. How can I help you with vaping information today?";
+    const greeting =
+      lang === "zh" ? "你好，我是ARIA，新加坡电子烟资讯助理。请问有什么可以帮助您？" :
+      lang === "ms" ? "Helo, saya ARIA, pembantu maklumat vaping Singapura. Boleh saya bantu anda?" :
+      lang === "ta" ? "வணக்கம், நான் ARIA, சிங்கப்பூர் வேப்பிங் தகவல் உதவியாளர். நான் உங்களுக்கு எப்படி உதவலாம்?" :
+      "Hello! I'm ARIA. How can I help you with vaping information today?";
 
     addChat("aria", greeting);
     addLog("speak", `[ARIA] ${greeting}`);
@@ -437,7 +460,10 @@ export function useVoiceAgent() {
     if (SR) {
       try {
         const warmup = new SR();
-        warmup.lang = lang === "zh" ? "zh-CN" : "en-US";
+        warmup.lang = lang === "zh" ? "zh-CN"
+                    : lang === "ms" ? "ms-MY"
+                    : lang === "ta" ? "ta-IN"
+                    : "en-US";
         warmup.onend = () => {}; // suppress any events
         warmup.onerror = () => {};
         warmup.onresult = () => {};

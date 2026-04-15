@@ -718,16 +718,18 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
             </p>
             {/* Language toggle — disabled during active session */}
             <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 shrink-0">
-              <button
-                onClick={() => !sessionActive && onLangChange("en")}
-                disabled={sessionActive}
-                className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-colors ${lang === "en" ? "bg-white text-blue-800 shadow-sm" : "text-slate-500 hover:text-slate-700"} disabled:cursor-not-allowed`}
-              >EN</button>
-              <button
-                onClick={() => !sessionActive && onLangChange("zh")}
-                disabled={sessionActive}
-                className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-colors ${lang === "zh" ? "bg-white text-blue-800 shadow-sm" : "text-slate-500 hover:text-slate-700"} disabled:cursor-not-allowed`}
-              >中文</button>
+              {([
+                { code: "en", label: "EN"      },
+                { code: "zh", label: "中文"    },
+                { code: "ms", label: "BM"      },
+                { code: "ta", label: "தமிழ்"  },
+              ] as { code: import("@/hooks/useVoiceAgent").Language; label: string }[]).map(({ code, label }) => (
+                <button key={code}
+                  onClick={() => !sessionActive && onLangChange(code)}
+                  disabled={sessionActive}
+                  className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-colors ${lang === code ? "bg-white text-blue-800 shadow-sm" : "text-slate-500 hover:text-slate-700"} disabled:cursor-not-allowed`}
+                >{label}</button>
+              ))}
             </div>
           </div>
           <div className="flex gap-2">
