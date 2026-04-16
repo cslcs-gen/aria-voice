@@ -1312,6 +1312,26 @@ function SurrenderPage({ onNav }: { onNav: (p: NavPage) => void }) {
         </div>
       </div>
 
+      {/* Google Maps embed — requires NEXT_PUBLIC_GOOGLE_MAPS_KEY in Vercel env vars */}
+      {process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY && (
+        <div className="mb-6 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+              <MapPin size={12} className="text-blue-600" />HSA Enforcement Branch — Main Surrender Centre
+            </p>
+          </div>
+          <iframe
+            title="HSA Enforcement Branch Location"
+            width="100%"
+            height="300"
+            style={{ border: 0 }}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            src={`https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&q=HSA+Health+Sciences+Authority+11+Biopolis+Way+Singapore`}
+          />
+        </div>
+      )}
+
       {/* HSA hotline */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center gap-4">
         <Phone className="w-8 h-8 text-blue-600 shrink-0" />
