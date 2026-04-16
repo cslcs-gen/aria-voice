@@ -57,13 +57,14 @@ function isChinese(t: string) { return /[\u4e00-\u9fff]/.test(t); }
 function isTamil(t: string)   { return /[\u0B80-\u0BFF]/.test(t); } // Tamil Unicode block
 
 const NOISE = new Set([
-  "","ok","okay","yes","no","hmm","um","uh","ah","oh","hey","hi",
-  "bye","goodbye","thanks","thank you","sure","right","alright","i see",
-  "and i can","and i","i can","you can","please","what","that","this",
+  "","hmm","um","uh","ah","oh",
+  "and i can","and i","i can","you can",
 ]);
 function isNoise(text: string, conf: number) {
   const t = text.trim().toLowerCase();
-  return t.length < 3 || conf < 0.2 || NOISE.has(t);
+  // Only filter: empty, very low confidence, or known echo phrases
+  // Do NOT filter short words like "yes", "no", "hi" — these may be real answers
+  return t.length < 2 || conf < 0.15 || NOISE.has(t);
 }
 
 // ── SR_LIFETIME: restart SR after this many ms to beat Chrome's 60s timeout ──
@@ -240,6 +241,7 @@ export function useVoiceAgent() {
 
     r.onresult = (e: Event) => {
       lastSrEventRef.current = Date.now();
+      noSpeechRef.current = 0; // reset silence counter on any speech
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = (e as any).results[0][0];
       const text: string = result.transcript ?? "";
@@ -274,8 +276,13 @@ export function useVoiceAgent() {
       stopSR();
 
       if (err === "no-speech") {
+        // Don't count no-speech while TTS is playing — expected silence
+        if (speakingRef.current) {
+          setTimeout(() => openMicRef.current(), 500);
+          return;
+        }
         noSpeechRef.current += 1;
-        if (noSpeechRef.current > 8) {
+        if (noSpeechRef.current > 12) {
           // Too many silent retries — pause session
           noSpeechRef.current = 0;
           activeRef.current = false;
@@ -451,52 +458,25 @@ export function useVoiceAgent() {
     addLog("speak", `[ARIA] ${greeting}`);
     setStatus("speaking");
 
-    // Detect mobile Chrome — pre-warm breaks audio pipeline on Android
-    const ua = navigator.userAgent;
-    const isAndroid    = ua.includes("Android");
-    const isIOS        = /iPad|iPhone|iPod/.test(ua);
-    const isMobileChr  = ua.includes("Chrome") && !ua.includes("Edg/") && (isAndroid || isIOS);
-
-    if (!isMobileChr) {
-      // DESKTOP: PRE-WARM SR within user gesture to establish mic permission
-      // This lets SR restart after async TTS without losing user gesture context
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w = window as any;
-      const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-      if (SR) {
-        try {
-          const warmup = new SR();
-          warmup.lang = lang === "zh" ? "zh-CN"
-                      : lang === "ms" ? "ms-MY"
-                      : lang === "ta" ? "ta-IN"
-                      : "en-US";
-          warmup.onend = () => {};
-          warmup.onerror = () => {};
-          warmup.onresult = () => {};
-          warmup.start();
-          setTimeout(() => { try { warmup.stop(); } catch {/**/} }, 100);
-        } catch {/**/}
-      }
-    }
-
-    // Play greeting then open mic
-    // On mobile Chrome: open mic immediately after greeting (no pre-warm delay needed)
+    // Open mic after greeting finishes
+    // Both desktop and mobile: speak first, then open mic cleanly
+    // No pre-warm needed — getUserMedia() above already establishes permission
     speak(greeting).then(() => {
       setTimeout(() => {
         if (activeRef.current && !processingRef.current && !listeningRef.current) {
           speakingRef.current = false;
           openMicRef.current();
         }
-      }, isMobileChr ? 200 : 400); // shorter delay on mobile
+      }, 300);
     });
 
-    // Safety net: open mic after 6s regardless (covers slow TTS on any device)
+    // Safety net: open mic after 7s regardless (covers very slow TTS)
     setTimeout(() => {
       if (activeRef.current && !processingRef.current && !listeningRef.current) {
         speakingRef.current = false;
         openMicRef.current();
       }
-    }, 6000);
+    }, 7000);
 
   },[addLog, addChat, speak]);
 
