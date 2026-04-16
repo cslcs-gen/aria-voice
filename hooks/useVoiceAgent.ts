@@ -427,7 +427,10 @@ export function useVoiceAgent() {
     if (activeRef.current) return;
 
     try {
-      await navigator.mediaDevices.getUserMedia({audio:true});
+      // Request mic permission then IMMEDIATELY release the stream
+      // Holding getUserMedia open blocks SR from accessing the mic on some devices
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      stream.getTracks().forEach(t => t.stop()); // release mic hardware
       addLog("system","[MIC] Microphone permission granted.");
     } catch {
       addLog("error","[MIC] Permission denied. Please allow microphone access.");
