@@ -8,14 +8,14 @@ import {
   Activity, Zap, Radio, ChevronRight, Phone, Mail, Calendar, User,
   TrendingUp, Shield, Send, RotateCcw, RefreshCw, BookOpen,
   AlertTriangle, Gavel, HeartPulse, Building2, ChevronDown, ChevronUp,
-  BadgeAlert, Lock, ExternalLink,
+  BadgeAlert, Lock, ExternalLink, MapPin, Navigation2, Heart,
 } from "lucide-react";
 import {
   useVoiceAgent, type ConsoleEntry, type AgentStatus,
   type VapingCase, type OffenderCase, type Language,
 } from "@/hooks/useVoiceAgent";
 
-type NavPage = "home" | "assistant" | "faq" | "offender" | "track";
+type NavPage = "home" | "assistant" | "faq" | "offender" | "track" | "laws" | "health" | "surrender";
 
 // ── Status config ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<AgentStatus, { label: string; textColor: string; bgColor: string; borderColor: string; glowColor: string; pulse: boolean }> = {
@@ -85,6 +85,9 @@ function Navigation({ page, onNav }: { page: NavPage; onNav: (p: NavPage) => voi
   const items: { id: NavPage; label: string }[] = [
     { id: "home",      label: "Home"          },
     { id: "assistant", label: "Ask ARIA"       },
+    { id: "laws",      label: "Laws"           },
+    { id: "health",    label: "Health Risks"   },
+    { id: "surrender", label: "Surrender"      },
     { id: "faq",       label: "FAQ"            },
     { id: "offender",  label: "My Case"        },
     { id: "track",     label: "Callback Cases" },
@@ -214,11 +217,11 @@ function TextInput({ onSend, status, placeholder }: { onSend: (text: string) => 
 // ── Home Page ─────────────────────────────────────────────────────────────────
 function HomePage({ onNav }: { onNav: (p: NavPage) => void }) {
   const features = [
-    { icon: Shield,        title: "Laws & Penalties",     desc: "Singapore vaping laws, fines up to SGD 10,000, prohibited activities",             page: "assistant" as NavPage, color: "text-blue-600",   bg: "bg-blue-50"   },
+    { icon: Shield,        title: "Laws & Penalties",     desc: "Singapore vaping laws, fines up to SGD 10,000, prohibited activities",             page: "laws"      as NavPage, color: "text-blue-600",   bg: "bg-blue-50"   },
     { icon: BookOpen,      title: "Self-Updating FAQ",    desc: "ARIA reads the Tobacco Act and auto-generates FAQs with last-updated timestamps",   page: "faq"       as NavPage, color: "text-violet-600", bg: "bg-violet-50" },
     { icon: Gavel,         title: "Offender Case Lookup", desc: "Retrieve your enforcement case, penalties, and next steps by NRIC or case ref",     page: "offender"  as NavPage, color: "text-red-600",    bg: "bg-red-50"    },
-    { icon: Activity,      title: "Health Risks",         desc: "Short and long-term health effects of vaping, myths vs facts",                       page: "assistant" as NavPage, color: "text-orange-600", bg: "bg-orange-50" },
-    { icon: MessageSquare, title: "Voice or Text",        desc: "Ask any vaping question by voice or text — ARIA answers in seconds",                 page: "assistant" as NavPage, color: "text-amber-600",  bg: "bg-amber-50"  },
+    { icon: Activity,      title: "Health Risks",         desc: "Short and long-term health effects of vaping, myths vs facts",                       page: "health"    as NavPage, color: "text-orange-600", bg: "bg-orange-50" },
+    { icon: MapPin,        title: "Surrender Your Vape",  desc: "Find authorised surrender centres near you and learn the procedure step by step",    page: "surrender" as NavPage, color: "text-amber-600",  bg: "bg-amber-50"  },
     { icon: Phone,         title: "Officer Callback",     desc: "Cannot find your answer? ARIA logs a case and arranges an officer to call back",     page: "track"     as NavPage, color: "text-teal-600",   bg: "bg-teal-50"   },
   ];
   return (
@@ -1006,6 +1009,325 @@ function TrackPage({ cases }: { cases: VapingCase[] }) {
   );
 }
 
+// ── Laws & Penalties Page ────────────────────────────────────────────────────
+function LawsPage({ onNav }: { onNav: (p: NavPage) => void }) {
+  const penalties = [
+    { tier: "First Offence", offence: "Use or Possession", fine: "Up to SGD 2,000", jail: "—", icon: <AlertTriangle size={16} className="text-amber-500" /> },
+    { tier: "Repeat Offence", offence: "Use or Possession", fine: "Up to SGD 4,000", jail: "—", icon: <BadgeAlert size={16} className="text-orange-500" /> },
+    { tier: "Any Offence", offence: "Importation", fine: "Up to SGD 10,000", jail: "Up to 6 months", icon: <Gavel size={16} className="text-red-500" /> },
+    { tier: "Repeat Importation", offence: "Importation", fine: "Up to SGD 20,000", jail: "Up to 12 months", icon: <Gavel size={16} className="text-red-700" /> },
+    { tier: "Any Offence", offence: "Sale or Distribution", fine: "Up to SGD 10,000", jail: "Up to 6 months", icon: <Gavel size={16} className="text-red-500" /> },
+    { tier: "Sale to Under-21", offence: "Sale to Minors", fine: "Up to SGD 20,000", jail: "—", icon: <ShieldCheck size={16} className="text-red-700" /> },
+  ];
+  const prohibited = [
+    "Using or possessing any e-cigarette or vaping device",
+    "Importing vaping devices — even for personal use",
+    "Selling or distributing vaping products",
+    "Advertising vaping products in any form",
+    "Bringing vaping devices into Singapore as a tourist",
+    "Using heated tobacco products such as IQOS or glo",
+    "Vaping in all public places, air-conditioned premises and food establishments",
+  ];
+  return (
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-6">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium mb-3"><Shield className="w-3.5 h-3.5" /> Singapore Tobacco Act (Cap 309)</div>
+        <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Laws & Penalties</h1>
+        <p className="text-slate-500 text-sm mt-1">Vaping is illegal in Singapore under the Tobacco (Control of Advertisements and Sale) Act. Here is what you need to know.</p>
+      </div>
+
+      {/* Alert banner */}
+      <div className="mb-6 flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+        <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+        <div>
+          <p className="font-semibold text-red-900 text-sm">Vaping is illegal in Singapore</p>
+          <p className="text-red-700 text-xs mt-1">This includes e-cigarettes, vaporisers, heated tobacco products (IQOS, glo, Ploom), and all related accessories — regardless of nicotine content.</p>
+        </div>
+      </div>
+
+      {/* Prohibited activities */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm mb-6">
+        <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Lock size={16} className="text-red-500" />What is Prohibited</h2>
+        <div className="space-y-2">
+          {prohibited.map((item, i) => (
+            <div key={i} className="flex items-start gap-2.5 text-sm text-slate-700">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0 mt-2" />
+              {item}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Penalty table */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm mb-6">
+        <div className="px-5 py-4 border-b border-slate-200 bg-slate-50">
+          <h2 className="font-bold text-slate-800 flex items-center gap-2"><Gavel size={16} className="text-blue-600" />Penalty Schedule</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="border-b border-slate-200 bg-slate-50/50">
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Offence Type</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Maximum Fine</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Imprisonment</th>
+            </tr></thead>
+            <tbody>
+              {penalties.map((p, i) => (
+                <tr key={i} className={`border-b border-slate-100 ${i % 2 === 0 ? "" : "bg-slate-50/30"}`}>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-2">{p.icon}<div><p className="font-medium text-slate-800">{p.offence}</p><p className="text-xs text-slate-400">{p.tier}</p></div></div>
+                  </td>
+                  <td className="px-5 py-3 font-semibold text-red-700">{p.fine}</td>
+                  <td className="px-5 py-3 text-slate-600">{p.jail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Enforcement agencies */}
+      <div className="grid sm:grid-cols-3 gap-4 mb-6">
+        {[
+          { name:"Health Sciences Authority (HSA)", role:"Primary regulator — vaping devices and importation", tel:"1800-117-8333", color:"bg-blue-50 border-blue-200" },
+          { name:"National Environment Agency (NEA)", role:"Smoking prohibition in public places", tel:"1800-225-5632", color:"bg-green-50 border-green-200" },
+          { name:"Singapore Police Force (SPF)", role:"Serious offences — minors and distribution", tel:"999", color:"bg-red-50 border-red-200" },
+        ].map((a, i) => (
+          <div key={i} className={`border rounded-xl p-4 ${a.color}`}>
+            <p className="font-semibold text-slate-800 text-xs mb-1">{a.name}</p>
+            <p className="text-slate-500 text-xs mb-2">{a.role}</p>
+            <a href={`tel:${a.tel}`} className="text-blue-700 text-xs font-semibold">📞 {a.tel}</a>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={() => onNav("assistant")} className="flex items-center gap-2 px-5 py-2.5 bg-blue-800 text-white rounded-lg text-sm font-semibold hover:bg-blue-900 transition-colors">
+          <MessageSquare size={14} /> Ask ARIA a Question
+        </button>
+        <a href="https://sso.agc.gov.sg/Act/TCASA1993" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors">
+          <ExternalLink size={14} /> View Full Act
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ── Health Risks Page ─────────────────────────────────────────────────────────
+function HealthPage({ onNav }: { onNav: (p: NavPage) => void }) {
+  const shortTerm = [
+    { title: "Throat & Airway Irritation", desc: "Immediate coughing, wheezing, and throat soreness from chemical vapour inhalation." },
+    { title: "Elevated Heart Rate", desc: "Nicotine causes rapid heart rate and increased blood pressure within minutes of use." },
+    { title: "Dizziness & Headaches", desc: "Nicotine absorption causes dizziness, nausea, and headaches especially in new users." },
+    { title: "Dry Mouth & Dehydration", desc: "Propylene glycol in e-liquids draws moisture from mouth tissues." },
+  ];
+  const longTerm = [
+    { title: "EVALI — Lung Injury", desc: "E-cigarette or Vaping product use-Associated Lung Injury causes serious, potentially fatal lung damage. Over 2,800 cases hospitalised in the US alone.", severity: "critical" },
+    { title: "Nicotine Addiction", desc: "Most e-liquids contain highly addictive nicotine. Adolescent brains are especially vulnerable — addiction can develop within days.", severity: "high" },
+    { title: "Cardiovascular Disease", desc: "Long-term vaping raises risk of heart attack, stroke, and arterial damage comparable to tobacco cigarettes.", severity: "high" },
+    { title: "Brain Development Harm", desc: "Nicotine permanently impairs memory, attention, and impulse control in adolescents under 25.", severity: "high" },
+    { title: "Respiratory Disease", desc: "Chronic bronchitis, reduced lung capacity, and increased asthma severity in long-term users.", severity: "medium" },
+    { title: "Chemical Exposure", desc: "E-liquid aerosol contains formaldehyde, acrolein, and heavy metals — all known carcinogens.", severity: "medium" },
+  ];
+  const severityConfig: Record<string, string> = {
+    critical: "bg-red-100 border-red-300 text-red-800",
+    high:     "bg-orange-50 border-orange-200 text-orange-800",
+    medium:   "bg-amber-50 border-amber-200 text-amber-800",
+  };
+  return (
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-6">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-xs font-medium mb-3"><HeartPulse className="w-3.5 h-3.5" /> Health Sciences Authority Singapore</div>
+        <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Health Risks of Vaping</h1>
+        <p className="text-slate-500 text-sm mt-1">Vaping is not safe. Contrary to popular belief, e-cigarettes cause serious short and long-term health harm.</p>
+      </div>
+
+      {/* Myth vs fact */}
+      <div className="mb-6 grid sm:grid-cols-2 gap-4">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <p className="text-xs font-bold text-red-600 uppercase tracking-wide mb-2">❌ Common Myth</p>
+          <p className="text-slate-800 text-sm font-medium">"Vaping is just water vapour — it's harmless"</p>
+        </div>
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+          <p className="text-xs font-bold text-green-600 uppercase tracking-wide mb-2">✅ The Fact</p>
+          <p className="text-slate-800 text-sm font-medium">Aerosol contains toxic chemicals, heavy metals, and ultrafine particles that penetrate deep into the lungs.</p>
+        </div>
+      </div>
+
+      {/* Short term */}
+      <div className="mb-6">
+        <h2 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Activity size={16} className="text-amber-500" />Short-Term Effects</h2>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {shortTerm.map((e, i) => (
+            <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <p className="font-semibold text-slate-800 text-sm mb-1">{e.title}</p>
+              <p className="text-slate-500 text-xs leading-relaxed">{e.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Long term */}
+      <div className="mb-6">
+        <h2 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><HeartPulse size={16} className="text-red-500" />Long-Term Effects</h2>
+        <div className="space-y-3">
+          {longTerm.map((e, i) => (
+            <div key={i} className={`border rounded-xl p-4 ${severityConfig[e.severity]}`}>
+              <p className="font-semibold text-sm mb-1">{e.title}</p>
+              <p className="text-xs leading-relaxed opacity-80">{e.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Quit resources */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-6">
+        <h2 className="font-bold text-blue-900 mb-3 flex items-center gap-2"><Heart size={15} className="text-blue-600" />Want to Quit Vaping?</h2>
+        <div className="grid sm:grid-cols-2 gap-3 text-sm">
+          <div><p className="font-semibold text-blue-800">HPB QuitLine</p><a href="tel:18004382000" className="text-blue-600 font-semibold">1800-438-2000</a><p className="text-blue-700 text-xs mt-0.5">Free counselling, Mon–Fri 8am–8pm</p></div>
+          <div><p className="font-semibold text-blue-800">I Quit Programme</p><a href="https://heartbeat.health.gov.sg" target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold flex items-center gap-1">heartbeat.health.gov.sg <ExternalLink size={10} /></a><p className="text-blue-700 text-xs mt-0.5">Free cessation programme, medication support</p></div>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={() => onNav("assistant")} className="flex items-center gap-2 px-5 py-2.5 bg-blue-800 text-white rounded-lg text-sm font-semibold hover:bg-blue-900 transition-colors">
+          <MessageSquare size={14} /> Ask ARIA a Question
+        </button>
+        <a href="https://www.hsa.gov.sg/e-cigarettes" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors">
+          <ExternalLink size={14} /> HSA Health Info
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ── Surrender Page ────────────────────────────────────────────────────────────
+function SurrenderPage({ onNav }: { onNav: (p: NavPage) => void }) {
+  const centres = [
+    { name: "HSA Enforcement Branch (HQ)", address: "11 Biopolis Way, Helios, Singapore 138667", area: "one-north", mapsUrl: "https://maps.google.com/?q=11+Biopolis+Way+Singapore", hours: "Mon–Fri: 8:30am – 5:30pm", note: "Main surrender centre. Walk-in accepted." },
+    { name: "Police Coast Guard — Tuas", address: "51 Tuas South Avenue 1, Singapore 637501", area: "West", mapsUrl: "https://maps.google.com/?q=51+Tuas+South+Avenue+1+Singapore", hours: "Mon–Fri: 9:00am – 5:00pm", note: "For devices seized at Tuas Checkpoint." },
+    { name: "Woodlands Checkpoint — Singapore Customs", address: "21 Woodlands Crossing, Singapore 738233", area: "North", mapsUrl: "https://maps.google.com/?q=21+Woodlands+Crossing+Singapore", hours: "24 hours, 7 days", note: "Devices may be surrendered at point of entry." },
+    { name: "Changi Airport — Singapore Customs T1", address: "Terminal 1, Changi Airport, Singapore 819642", area: "East", mapsUrl: "https://maps.google.com/?q=Changi+Airport+Terminal+1+Singapore", hours: "24 hours, 7 days", note: "Arriving passengers may surrender at Customs." },
+    { name: "Changi Airport — Singapore Customs T2/T3", address: "Terminal 2 & 3, Changi Airport, Singapore", area: "East", mapsUrl: "https://maps.google.com/?q=Changi+Airport+Terminal+2+Singapore", hours: "24 hours, 7 days", note: "Arriving passengers may surrender at Customs." },
+  ];
+
+  const steps = [
+    { step: "1", title: "Do not use or show the device", desc: "Do not vape in public or display the device. Carry it concealed in your bag." },
+    { step: "2", title: "Visit the nearest surrender centre", desc: "Walk into any HSA Enforcement Branch, Police Post, or Singapore Customs checkpoint." },
+    { step: "3", title: "Declare your device voluntarily", desc: "Inform the officer you wish to surrender a vaping device voluntarily. This is different from being caught." },
+    { step: "4", title: "Complete a simple form", desc: "You will be asked to fill in a short surrender declaration form. No NRIC required for voluntary surrender." },
+    { step: "5", title: "Device is confiscated and destroyed", desc: "The device is logged and destroyed. You receive a surrender acknowledgement slip." },
+  ];
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-6">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-medium mb-3"><MapPin className="w-3.5 h-3.5" /> Voluntary Surrender Programme</div>
+        <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Surrender Your Vaping Device</h1>
+        <p className="text-slate-500 text-sm mt-1">If you have a vaping device, surrender it voluntarily. Voluntary surrender is treated more leniently than being caught in possession.</p>
+      </div>
+
+      {/* Voluntary vs caught */}
+      <div className="grid sm:grid-cols-2 gap-4 mb-6">
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+          <p className="text-xs font-bold text-green-600 uppercase tracking-wide mb-2">✅ Voluntary Surrender</p>
+          <ul className="space-y-1 text-xs text-green-800">
+            <li>• No fine in most cases</li>
+            <li>• No criminal record</li>
+            <li>• Simple acknowledgement form only</li>
+            <li>• Walk-in, no appointment needed</li>
+          </ul>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <p className="text-xs font-bold text-red-600 uppercase tracking-wide mb-2">❌ If Caught in Possession</p>
+          <ul className="space-y-1 text-xs text-red-800">
+            <li>• Fine up to SGD 2,000 (first offence)</li>
+            <li>• Fine up to SGD 4,000 (repeat)</li>
+            <li>• Enforcement record created</li>
+            <li>• Possible court proceedings</li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Steps */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm mb-6">
+        <h2 className="font-bold text-slate-800 mb-5 flex items-center gap-2"><CheckCircle2 size={16} className="text-green-500" />How to Surrender — Step by Step</h2>
+        <div className="space-y-4">
+          {steps.map((s, i) => (
+            <div key={i} className="flex gap-4">
+              <div className="w-8 h-8 rounded-full bg-blue-800 text-white flex items-center justify-center text-xs font-bold shrink-0">{s.step}</div>
+              <div className="flex-1 pb-4 border-b border-slate-100 last:border-0 last:pb-0">
+                <p className="font-semibold text-slate-800 text-sm">{s.title}</p>
+                <p className="text-slate-500 text-xs mt-0.5 leading-relaxed">{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Surrender centres */}
+      <div className="mb-6">
+        <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><MapPin size={16} className="text-blue-600" />Authorised Surrender Centres</h2>
+        <div className="space-y-3">
+          {centres.map((c, i) => (
+            <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-semibold text-slate-800 text-sm">{c.name}</p>
+                    <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-medium">{c.area}</span>
+                  </div>
+                  <p className="text-slate-500 text-xs flex items-center gap-1 mb-1"><MapPin size={10} />{c.address}</p>
+                  <p className="text-slate-500 text-xs flex items-center gap-1 mb-1"><Clock size={10} />{c.hours}</p>
+                  <p className="text-emerald-600 text-xs font-medium">{c.note}</p>
+                </div>
+                <a href={c.mapsUrl} target="_blank" rel="noopener noreferrer"
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold hover:bg-blue-100 transition-colors">
+                  <Navigation2 size={12} /> Maps
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Google maps embed for HSA HQ */}
+      <div className="mb-6 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+          <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5"><MapPin size={12} className="text-blue-600" />HSA Enforcement Branch — Main Surrender Centre</p>
+        </div>
+        <iframe
+          title="HSA Enforcement Branch Location"
+          width="100%"
+          height="280"
+          style={{ border: 0 }}
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          src="https://www.google.com/maps/embed/v1/place?key=AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFmBWY&q=HSA+Health+Sciences+Authority+Singapore+11+Biopolis+Way"
+        />
+      </div>
+
+      {/* HSA hotline */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center gap-4">
+        <Phone className="w-8 h-8 text-blue-600 shrink-0" />
+        <div>
+          <p className="font-semibold text-blue-900">HSA Vaping Hotline</p>
+          <a href="tel:18001178333" className="text-blue-700 font-bold text-lg">1800-117-8333</a>
+          <p className="text-blue-600 text-xs mt-0.5">Monday – Friday, 8:30am – 5:30pm. Call to confirm surrender procedures before visiting.</p>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={() => onNav("assistant")} className="flex items-center gap-2 px-5 py-2.5 bg-blue-800 text-white rounded-lg text-sm font-semibold hover:bg-blue-900 transition-colors">
+          <MessageSquare size={14} /> Ask ARIA a Question
+        </button>
+        <a href="https://www.hsa.gov.sg" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors">
+          <ExternalLink size={14} /> Visit HSA Website
+        </a>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Page() {
   const { status, consoleLog, callbackCases, lookedUpCases, chatHistory, startSession, stopSession, clearLogs, resetConversation, sendTextQuery } = useVoiceAgent();
@@ -1038,6 +1360,9 @@ export default function Page() {
         <Navigation page={page} onNav={setPage} />
         {page==="home"      && <HomePage onNav={setPage} />}
         {page==="assistant" && <AssistantPage status={status} consoleLog={consoleLog} callbackCases={callbackCases} chatHistory={chatHistory} sessionActive={sessionActive} onToggleSession={handleToggleSession} clearLogs={clearLogs} onReset={resetConversation} onTextSend={sendTextQuery} lang={lang} onLangChange={handleLangChange} />}
+        {page==="laws"      && <LawsPage onNav={setPage} />}
+        {page==="health"    && <HealthPage onNav={setPage} />}
+        {page==="surrender" && <SurrenderPage onNav={setPage} />}
         {page==="faq"       && <FAQPage />}
         {page==="offender"  && <OffenderPage lookedUpCases={lookedUpCases} onTextSend={sendTextQuery} status={status} chatHistory={chatHistory} />}
         {page==="track"     && <TrackPage cases={callbackCases} />}
