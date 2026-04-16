@@ -1290,20 +1290,26 @@ function SurrenderPage({ onNav }: { onNav: (p: NavPage) => void }) {
         </div>
       </div>
 
-      {/* Google maps embed for HSA HQ */}
+      {/* Surrender centres map links */}
       <div className="mb-6 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-          <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5"><MapPin size={12} className="text-blue-600" />HSA Enforcement Branch — Main Surrender Centre</p>
+          <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5"><MapPin size={12} className="text-blue-600" />Quick Directions — Click to Open in Google Maps</p>
         </div>
-        <iframe
-          title="HSA Enforcement Branch Location"
-          width="100%"
-          height="280"
-          style={{ border: 0 }}
-          loading="lazy"
-          referrerPolicy="no-referrer-when-downgrade"
-          src="https://www.google.com/maps/embed/v1/place?key=AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFmBWY&q=HSA+Health+Sciences+Authority+Singapore+11+Biopolis+Way"
-        />
+        <div className="p-4 grid sm:grid-cols-2 gap-3">
+          {centres.map((c, i) => (
+            <a key={i} href={c.mapsUrl} target="_blank" rel="noopener noreferrer"
+              className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors group">
+              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                <Navigation2 size={14} className="text-blue-700" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-slate-800 text-xs leading-snug">{c.name}</p>
+                <p className="text-slate-400 text-[10px] mt-0.5 truncate">{c.address}</p>
+                <p className="text-blue-600 text-[10px] font-semibold mt-1 group-hover:underline">Open in Google Maps →</p>
+              </div>
+            </a>
+          ))}
+        </div>
       </div>
 
       {/* HSA hotline */}
