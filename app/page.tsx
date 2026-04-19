@@ -745,8 +745,7 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
         <VoiceAura status={status} />
         <div className="flex-1 space-y-2">
           {/* Language toggle — disabled during active session */}
-          <div className="flex justify-end">
-            <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 shrink-0">
+          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 w-fit">
               {([
                 { code: "en", label: "EN"      },
                 { code: "zh", label: "中文"    },
@@ -759,7 +758,6 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
                   className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-colors ${lang === code ? "bg-white text-blue-800 shadow-sm" : "text-slate-500 hover:text-slate-700"} disabled:cursor-not-allowed`}
                 >{label}</button>
               ))}
-            </div>
           </div>
           <p className="text-xs text-slate-500 font-medium">{statusLabel}</p>
           <div className="flex gap-2">
