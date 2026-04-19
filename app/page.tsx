@@ -744,9 +744,8 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
       <div className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
         <VoiceAura status={status} />
         <div className="flex-1 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500 font-medium">{statusLabel}</p>
-            {/* Language toggle — disabled during active session */}
+          {/* Language toggle — disabled during active session */}
+          <div className="flex justify-end">
             <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 shrink-0">
               {([
                 { code: "en", label: "EN"      },
@@ -762,6 +761,7 @@ function AssistantPage({ status, consoleLog, callbackCases, chatHistory, session
               ))}
             </div>
           </div>
+          <p className="text-xs text-slate-500 font-medium">{statusLabel}</p>
           <div className="flex gap-2">
             <button
               onClick={onToggleSession}
