@@ -909,6 +909,7 @@ function TrackPage({ cases }: { cases: VapingCase[] }) {
         if (Array.isArray(data.cases)) setCaseList(data.cases);
       } catch {/**/}
     };
+    poll(); // fetch immediately on mount
     pollRef.current = setInterval(poll, 10_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
